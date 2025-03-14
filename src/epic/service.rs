@@ -123,6 +123,13 @@ impl EpicService {
         }
     }
 
+    pub async fn uninstall(&self, app_id: &str) -> fdo::Result<()> {
+        match self.legendary.uninstall(app_id).await {
+            Ok(_) => Ok(()),
+            Err(e) => Err(fdo::Error::Failed(e.to_string())),
+        }
+    }
+
     pub async fn import(&self, app_id: &str, install_folder: &str) -> fdo::Result<()> {
         match self.legendary.import(app_id, install_folder).await {
             Ok(_) => Ok(()),

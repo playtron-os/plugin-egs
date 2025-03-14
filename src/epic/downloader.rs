@@ -4,53 +4,18 @@
 
 use std::process::Stdio;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 
 use lazy_static::lazy_static;
 use log::info;
 use regex::Regex;
 use tokio::fs;
-use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::mpsc::Receiver;
 
-// use crate::app::common::downloader::{post_download, Downloader, ProviderDownloader};
-// use crate::app::common::installer::handle_app_download_error;
-// use crate::app::common::launch_config::parse_launch_config;
-// use crate::app::common::launcher::get_launch_config;
-// use crate::app::common::utils::{verify_space_available, AppDownloadOption};
-// use crate::app::epic::common::{
-//     execute_legendary_handle_auth, logout_if_authorized, EPIC_MAX_WRITER_QUEUE_EMPTY_ERROR_COUNT,
-// };
-// use crate::app::epic::legendary::Legendary;
-// use crate::app::utils::reaper::ReaperProcess;
 use crate::epic::common::{
     execute_legendary_handle_auth_raw, EPIC_MAX_WRITER_QUEUE_EMPTY_ERROR_COUNT,
 };
 
-use crate::epic::models::ProtonVerb;
 use crate::types::errors::{EmptyResult, ResultWithError};
-// use crate::models::app::AppType;
-// use crate::models::app_storage::AppDownloadProgress;
-// use crate::models::epic::LegendaryGameManifestPrerequisites;
-// use crate::models::errors::{EmptyResult, ResultWithError};
-// use crate::network_management::network_manager::NetworkManager;
-//use crate::tools::runner::proton::ProtonVerb;
-//use crate::tools::runner::{get_runner, run_runner_command};
-//use crate::utils::child::{convert_to_tokio_command, stream_process_output, OutputLine};
-//use crate::utils::feature_flags::is_epic_games_disabled;
-//use crate::utils::math::{bytes_to_megabytes, megabytes_to_bytes};
-//use crate::{
-//    app::{
-//        common::{installer::Installer, utils::setup_user_app_for_download},
-//        epic::common::{get_app_install_dir, get_install_base_folder, require_legendary},
-//    },
-//    models::{
-//        app::{DownloadStage, OwnedApp},
-//        app_storage::InstalledApp,
-//        epic::LegendaryGameInfo,
-//        errors::ApiError,
-//    },
-//    utils::{index::regex_capture, path::get_last_segment_of_path, storage::index::Storage},
-//};
 
 use super::config::LegendaryConfig;
 use super::legendary::Legendary;
@@ -97,7 +62,6 @@ pub trait ProviderDownloader {
         &self,
         session_mutex: Arc<tokio::sync::Mutex<()>>,
         user_id: &str,
-        owned_app: &OwnedApp,
         download_options: AppDownloadOption,
     ) -> ResultWithError<Receiver<AppDownloadProgress>>;
 }
@@ -125,25 +89,14 @@ impl ProviderDownloader for EpicDownloader {
         handle_install(app_id, reset_wine_prefix, self.config.clone()).await
     }
 
-    /// Uninstall an app
-    async fn uninstall(&self, app_id: &str) -> ResultWithError<(String, String)> {
-        info!("Running legendary uninstall for app:{}", app_id);
-        execute_legendary_handle_auth_raw(
-            self.config.legendary_command.clone(),
-            ["uninstall", app_id, "--yes"],
-        )
-        .await
-    }
-
     /// Triggers a download for this provider
     async fn download(
         &self,
         session_mutex: Arc<tokio::sync::Mutex<()>>,
         app_id: &str,
-        owned_app: &OwnedApp,
         download_options: AppDownloadOption,
     ) -> ResultWithError<Receiver<AppDownloadProgress>> {
-        if owned_app.id == super::overlay::get_owned_app_id() {
+        if app_id == super::overlay::PROVIDER_APP_ID {
             log::info!("Installing EOS Overlay");
             return super::overlay::install(&self.config, user_id).await;
         }
@@ -158,7 +111,7 @@ impl ProviderDownloader for EpicDownloader {
         let legendary = Legendary::new(Some(self.config.clone()));
 
         if installed_app.download_status.stage == DownloadStage::Done {
-            let app_info = legendary.info(user_id, &owned_app.id).await?;
+            let app_info = legendary.info(&owned_app.id).await?;
             if let Some(install) = &app_info.install {
                 if install.version == app_info.game.version {
                     return Err(ApiError::AppInstalled.into());
@@ -219,38 +172,6 @@ impl ProviderDownloader for EpicDownloader {
             installed_app.install_config.install_folder.clone()
         };
 
-        installed_app = storage
-            .update_installed_app_install_directories(
-                installed_app.owned_app.id.clone(),
-                install_root.clone(),
-                install_disk,
-                install_folder.clone(),
-                installed_app
-                    .install_config
-                    .symlink_path
-                    .clone()
-                    .unwrap_or_default(),
-            )
-            .await?;
-
-        if let Some(install_info) = info.install {
-            if install_folder != install_info.install_path {
-                log::info!("Install folder:{} differs from legenadry install path:{}, so removing legendary metadata",
-                    install_folder, install_info.install_path);
-
-                execute_legendary_handle_auth(
-                    user_id,
-                    self.config.legendary_command.clone(),
-                    [
-                        "uninstall",
-                        installed_app.owned_app.provider_id.as_str(),
-                        "--yes",
-                    ],
-                )
-                .await?;
-            }
-        }
-
         // Make sure apps folder exists
         fs::create_dir_all(get_install_base_folder(&install_root)).await?;
 
@@ -261,7 +182,7 @@ impl ProviderDownloader for EpicDownloader {
         let game_folder = get_last_segment_of_path(&installed_app.install_config.install_folder);
         let mut arguments: Vec<String> = vec![
             "install".to_owned(),
-            owned_app.provider_id.clone(),
+            app_id.to_string(),
             "--yes".to_owned(),
             "--with-dlcs".to_owned(),
             "--base-path".to_owned(),
@@ -290,7 +211,7 @@ impl ProviderDownloader for EpicDownloader {
 
         // Execute legendary command
         let mut reaper = ReaperProcess::new(&self.config.legendary_command);
-        reaper.with_identifier(owned_app.id.clone());
+        reaper.with_identifier(app_id.clone());
         reaper
             .command
             .args(arguments)
@@ -303,9 +224,7 @@ impl ProviderDownloader for EpicDownloader {
 
         // Set child for session
         info!("Reaper initialized");
-        Downloader::new()
-            .assign_reaper(user_id, &owned_app.id, reaper)
-            .await;
+        Downloader::new().assign_reaper(&app_id, reaper).await;
 
         let cloned_user_id = user_id.to_owned();
         tokio::spawn(async move {
@@ -328,7 +247,7 @@ impl ProviderDownloader for EpicDownloader {
             }
         });
 
-        info!("Started download session for for app_id:{}", owned_app.id);
+        info!("Started download session for for app_id:{}", app_id);
 
         Ok(rc)
     }

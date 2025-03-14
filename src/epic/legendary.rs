@@ -6,13 +6,12 @@ use crate::{
             check_invalid_legendary_response, execute_legendary_handle_auth_json,
             get_app_install_dir, require_legendary,
         },
-        models::LegendaryGameListInfo,
+        models::{LegendaryGameInfo, LegendaryGameListInfo, LegendaryInstalledGameResponse},
     },
     plugin::errors::PluginError,
     types::{
         app::{AppEulaInformation, EpicStatusResponse},
         cloud_sync::CloudSyncOperation,
-        epic::{LegendaryGameInfo, LegendaryInstalledGameResponse},
         errors::{EmptyResult, ResultWithError},
     },
     utils::{child::command_sync, reaper::ReaperProcess, system::move_folder_with_progress},
@@ -340,5 +339,16 @@ impl Legendary {
             .collect();
 
         Ok(eulas)
+    }
+
+    /// Uninstall an app
+    pub async fn uninstall(&self, app_id: &str) -> EmptyResult {
+        info!("Running legendary uninstall for app:{}", app_id);
+        execute_legendary_handle_auth_raw(
+            self.config.legendary_command.clone(),
+            ["uninstall", app_id, "--yes"],
+        )
+        .await?;
+        Ok(())
     }
 }

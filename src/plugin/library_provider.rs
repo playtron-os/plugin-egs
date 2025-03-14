@@ -145,28 +145,7 @@ impl LibraryProvider {
 
     /// List all installed apps
     async fn get_installed_apps(&self) -> fdo::Result<Vec<InstalledApp>> {
-        log::info!("get_installed_apps");
         self.service.get_installed_apps().await
-    }
-
-    /// Returns a list of available launch options. This includes information
-    /// on how the game should be launched together with other useful metadata.
-    ///
-    /// # Example
-    ///
-    /// busctl --user call one.playtron.EpicGames \
-    ///   /one/playtron/EpicGames/LegendaryClient0 \
-    ///   one.playtron.plugin.LibraryProvider \
-    ///   GetLaunchOptions "s" "460950"
-    fn get_launch_options(&self, app_id: String) -> fdo::Result<Vec<LaunchOption>> {
-        log::info!("get_launch_options for {}", app_id);
-        Err(fdo::Error::Failed("Unimplemented".to_string()))
-    }
-
-    /// TODO  Undocumented
-    fn get_post_install_steps(&self, app_id: String) -> fdo::Result<String> {
-        log::info!("get_post_install_steps for {}", app_id);
-        Err(fdo::Error::Failed("Unimplemented".to_string()))
     }
 
     /// Returns a provider item for a given provider app id.
@@ -191,6 +170,26 @@ impl LibraryProvider {
     ///   GetProviderItems
     async fn get_provider_items(&self) -> fdo::Result<Vec<ProviderItem>> {
         self.service.get_provider_items().await
+    }
+
+    /// Returns a list of available launch options. This includes information
+    /// on how the game should be launched together with other useful metadata.
+    ///
+    /// # Example
+    ///
+    /// busctl --user call one.playtron.EpicGames \
+    ///   /one/playtron/EpicGames/LegendaryClient0 \
+    ///   one.playtron.plugin.LibraryProvider \
+    ///   GetLaunchOptions "s" "460950"
+    fn get_launch_options(&self, app_id: String) -> fdo::Result<Vec<LaunchOption>> {
+        log::info!("get_launch_options for {}", app_id);
+        Err(fdo::Error::Failed("Unimplemented".to_string()))
+    }
+
+    /// TODO  Undocumented
+    fn get_post_install_steps(&self, app_id: String) -> fdo::Result<String> {
+        log::info!("get_post_install_steps for {}", app_id);
+        Err(fdo::Error::Failed("Unimplemented".to_string()))
     }
 
     /// Start installing the app with the given provider app id to the given
@@ -249,9 +248,8 @@ impl LibraryProvider {
     ///   /one/playtron/EpicGames/LegendaryClient0 \
     ///   one.playtron.plugin.LibraryProvider \
     ///   Uninstall "s" "460950"
-    fn uninstall(&self, app_id: String) -> fdo::Result<()> {
-        log::info!("uninstall {}", app_id);
-        Err(fdo::Error::Failed("Unimplemented".to_string()))
+    async fn uninstall(&self, app_id: String) -> fdo::Result<()> {
+        self.service.uninstall(app_id.as_str()).await
     }
 
     /// Start updating the given game. Once the update starts,

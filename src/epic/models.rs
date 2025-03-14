@@ -188,6 +188,29 @@ pub struct LegendaryEula {
     pub url: String,
 }
 
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
+pub struct LegendaryInstalledGameResponse {
+    pub app_name: String,
+    pub base_urls: Vec<String>,
+    pub can_run_offline: bool,
+    pub egl_guid: String,
+    pub executable: String,
+    pub install_path: String,
+    pub install_size: u64,
+    pub install_tags: Vec<String>,
+    pub is_dlc: bool,
+    pub launch_parameters: String,
+    pub manifest_path: Option<String>,
+    pub needs_verification: bool,
+    pub platform: String,
+    pub prereq_info: Option<String>,
+    pub requires_ot: bool,
+    pub save_path: Option<String>,
+    pub title: String,
+    pub uninstaller: Option<String>,
+    pub version: String,
+}
+
 pub enum ProtonVerb {
     /// For running setup commands
     Run,

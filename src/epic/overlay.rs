@@ -32,8 +32,8 @@ pub async fn remove(config: LegendaryConfig) -> ResultWithError<()> {
 
 /// Install EOS overlay
 pub async fn install(
-    overlay_folder: String,
     config: LegendaryConfig,
+    overlay_folder: String,
 ) -> ResultWithError<BufReader<ChildStderr>> {
     let arguments: Vec<String> = vec![
         PROVIDER_APP_ID.to_owned(),
