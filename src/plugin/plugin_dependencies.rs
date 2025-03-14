@@ -14,11 +14,7 @@ impl PluginDependencies {
         emitter: &SignalEmitter<'_>,
         app_id: String,
         version: String,
-    ) -> Result<()> {
-        log::info!("App new version");
-
-        Ok(())
-    }
+    ) -> Result<()>;
 
     #[zbus(signal)]
     async fn install_completed(emitter: &SignalEmitter<'_>, value: String) -> Result<()>;

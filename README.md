@@ -4,3 +4,6 @@ This plugin allows to interact with the Epic Games Store via [Legendary](https:/
 
 The `epic/service.rs` module is responsible for bridging Legendary and DBus.
 Functions in this module should return `fdo::Result<T>`.
+Functionality should be implemented in this service, and the DBus interface
+defined in the `plugin` module should only serve as a thin wrapper around
+this service. This allows swapping one service with another easilly.
