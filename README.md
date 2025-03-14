@@ -1,5 +1,6 @@
-# Playtron Plugin Template
+# Epic Games plugin
 
-This project provides a base template that can be used for the development of plugins for Playtron using Rust.
+This plugin allows to interact with the Epic Games Store via [Legendary](https://github.com/derrod/legendary) and a DBus service.
 
-Plugins register a DBus service that Playserve can make calls to. They should implement the interfaces described in EpicGames-client.xml
+The `epic/service.rs` module is responsible for bridging Legendary and DBus.
+Functions in this module should return `fdo::Result<T>`.

@@ -1,9 +1,12 @@
 //! This is the legendary module responsible for common functionality within legendary, such as getting status and authentication
 use crate::{
     constants::LIBRARY_PROVIDER_ID,
-    epic::common::{
-        check_invalid_legendary_response, execute_legendary_handle_auth_json, get_app_install_dir,
-        require_legendary,
+    epic::{
+        common::{
+            check_invalid_legendary_response, execute_legendary_handle_auth_json,
+            get_app_install_dir, require_legendary,
+        },
+        models::LegendaryGameListInfo,
     },
     plugin::errors::PluginError,
     types::{
@@ -19,7 +22,9 @@ use futures::StreamExt;
 use log::info;
 use parking_lot::Mutex;
 use regex::Regex;
+use std::future::Future;
 use std::process::Stdio;
+
 use tokio::{fs, process::Command};
 
 use super::{
@@ -230,28 +235,59 @@ impl Legendary {
             return Err("Error while listing Epic apps".into());
         }
 
+        //log::info!("{}", stdout);
         //Parse JSON output
         let installed_apps: Vec<LegendaryInstalledGameResponse> = serde_json::from_str(&stdout)?;
         Ok(installed_apps)
+    }
+
+    pub async fn get_apps(&self) -> ResultWithError<Vec<LegendaryGameListInfo>> {
+        log::info!("Fetching owned apps for Epic");
+        let response: Vec<LegendaryGameListInfo> = execute_legendary_handle_auth_json(
+            self.config.legendary_command.clone(),
+            ["list", "--json"],
+        )
+        .await?;
+        Ok(response.into_iter().collect::<Vec<LegendaryGameListInfo>>())
     }
 
     pub async fn get_game_info(
         &self,
         app_id: &str,
     ) -> ResultWithError<Option<LegendaryInstalledGameResponse>> {
-        for app in self.get_installed_apps().await.unwrap() {
-            if app.app_name == app_id {
-                return Ok(Some(app));
+        match self.get_installed_apps().await {
+            Ok(apps) => {
+                for app in apps {
+                    if app.app_name == app_id {
+                        return Ok(Some(app));
+                    }
+                }
             }
+            Err(e) => log::error!("Failed to get installed apps: {}", e),
         }
         Ok(None)
     }
 
     /// Move an app to another drive
-    pub async fn move_app_to_drive(&self, app_id: &str, drive_name: &str) -> EmptyResult {
+    pub async fn move_app_to_drive<F, Fut>(
+        &self,
+        app_id: &str,
+        drive_name: &str,
+        on_progress: F,
+    ) -> EmptyResult
+    where
+        F: FnOnce(String, u8) -> Fut + Copy + Clone,
+        Fut: Future,
+    {
         if let Some(game_info) = self.get_game_info(app_id).await? {
             let current_folder_name = game_info.install_path.split('/').last().unwrap();
             let new_game_folder_path = get_app_install_dir(drive_name, current_folder_name);
+
+            log::info!(
+                "current_folder_name: {}, new_game_folder_path: {}",
+                current_folder_name,
+                new_game_folder_path
+            );
 
             // use util to move game folder since legendary move doesn't support moving to a different drive
             fs::remove_dir_all(&new_game_folder_path)
@@ -263,7 +299,7 @@ impl Legendary {
 
             while let Some(progress) = progress.next().await {
                 let progress = progress?;
-                self.notify_move_progress(progress).await;
+                on_progress(app_id.to_string(), progress).await;
             }
             execute_legendary_handle_auth_raw(
                 self.config.legendary_command.clone(),
@@ -304,20 +340,5 @@ impl Legendary {
             .collect();
 
         Ok(eulas)
-    }
-
-    pub async fn notify_move_progress(&self, progress: u8) {
-        log::info!("{:?}", progress);
-        // if let Some(manager) = dbus::get_manager_interface().await {
-        //     if let Err(err) = manager
-        //         .on_drive_added(
-        //             manager.signal_emitter(),
-        //             PluginDriveInfo::from_disk_info(info),
-        //         )
-        //         .await
-        //     {
-        //         log::error!("Error emitting manager signal for new drive added, err:{err:?}");
-        //     }
-        // }
     }
 }

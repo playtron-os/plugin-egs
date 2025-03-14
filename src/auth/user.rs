@@ -95,7 +95,7 @@ impl User {
     ///   one.playtron.auth.User \
     ///   Logout "s" "PlaytronTest1"
     async fn logout(&mut self, user_id: String) -> fdo::Result<()> {
-        println!("Logging out {}", user_id);
+        log::info!("Logging out {}", user_id);
         match self.service.logout().await {
             Ok(_) => Ok(()),
             Err(e) => Err(fdo::Error::Failed(e.to_string())),

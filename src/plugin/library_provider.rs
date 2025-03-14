@@ -112,8 +112,8 @@ impl LibraryProvider {
     async fn get_eulas(
         &self,
         app_id: String,
-        country: String,
-        locale: String,
+        country: String, // Unused
+        locale: String,  // Unused
     ) -> fdo::Result<Vec<AppEulaInformation>> {
         log::info!(
             "Getting eulas for app {} ({} {})",
@@ -140,17 +140,13 @@ impl LibraryProvider {
     ///   GetInstallOptions "s" "460950"
     fn get_install_options(&self, app_id: String) -> fdo::Result<Vec<String>> {
         log::info!("get_install_options for {}", app_id);
-        Ok(vec![])
+        Err(fdo::Error::Failed("Unimplemented".to_string()))
     }
 
-    /// TODO Undocumented
+    /// List all installed apps
     async fn get_installed_apps(&self) -> fdo::Result<Vec<InstalledApp>> {
         log::info!("get_installed_apps");
-        let service = EpicService::new();
-        match service.get_installed_apps().await {
-            Ok(installed_apps) => Ok(installed_apps),
-            Err(e) => Err(fdo::Error::Failed(e.to_string())),
-        }
+        self.service.get_installed_apps().await
     }
 
     /// Returns a list of available launch options. This includes information
@@ -164,13 +160,13 @@ impl LibraryProvider {
     ///   GetLaunchOptions "s" "460950"
     fn get_launch_options(&self, app_id: String) -> fdo::Result<Vec<LaunchOption>> {
         log::info!("get_launch_options for {}", app_id);
-        Ok(vec![])
+        Err(fdo::Error::Failed("Unimplemented".to_string()))
     }
 
     /// TODO  Undocumented
     fn get_post_install_steps(&self, app_id: String) -> fdo::Result<String> {
         log::info!("get_post_install_steps for {}", app_id);
-        Ok("".to_string())
+        Err(fdo::Error::Failed("Unimplemented".to_string()))
     }
 
     /// Returns a provider item for a given provider app id.
@@ -182,11 +178,7 @@ impl LibraryProvider {
     ///   one.playtron.plugin.LibraryProvider \
     ///   GetProviderItem "s" "460950"
     async fn get_provider_item(&self, app_id: String) -> fdo::Result<ProviderItem> {
-        let service = EpicService::new();
-        match service.get_provider_item(&app_id).await {
-            Ok(item) => Ok(item),
-            Err(e) => Err(fdo::Error::Failed(e.to_string())),
-        }
+        self.service.get_provider_item(&app_id).await
     }
 
     /// Returns all provider items.
@@ -197,9 +189,8 @@ impl LibraryProvider {
     ///   /one/playtron/EpicGames/LegendaryClient0 \
     ///   one.playtron.plugin.LibraryProvider \
     ///   GetProviderItems
-    fn get_provider_items(&self) -> fdo::Result<Vec<ProviderItem>> {
-        log::info!("get_provider_items");
-        Ok(vec![])
+    async fn get_provider_items(&self) -> fdo::Result<Vec<ProviderItem>> {
+        self.service.get_provider_items().await
     }
 
     /// Start installing the app with the given provider app id to the given
@@ -218,12 +209,11 @@ impl LibraryProvider {
     fn install(&self, app_id: &str, disk: &str, options: HashMap<&str, &str>) -> fdo::Result<u32> {
         log::info!("install {} on {}", app_id, disk);
         dbg!(options);
-        Ok(0)
+        Err(fdo::Error::Failed("Unimplemented".to_string()))
     }
 
     async fn import(&self, app_id: &str, install_folder: &str) -> fdo::Result<()> {
-        self.service.import(app_id, install_folder).await;
-        Ok(())
+        self.service.import(app_id, install_folder).await
     }
 
     /// Moves the given app to another disk and returns the new install directory.
@@ -248,7 +238,7 @@ impl LibraryProvider {
     ///   Refresh
     fn refresh(&self) -> fdo::Result<()> {
         log::info!("refresh");
-        Ok(())
+        Err(fdo::Error::Failed("Unimplemented".to_string()))
     }
 
     /// Uninstalls the given app.
@@ -261,7 +251,7 @@ impl LibraryProvider {
     ///   Uninstall "s" "460950"
     fn uninstall(&self, app_id: String) -> fdo::Result<()> {
         log::info!("uninstall {}", app_id);
-        Ok(())
+        Err(fdo::Error::Failed("Unimplemented".to_string()))
     }
 
     /// Start updating the given game. Once the update starts,

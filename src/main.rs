@@ -9,7 +9,7 @@ mod utils;
 
 use epic::service::EpicService;
 
-use crate::plugin::service::{build_connection, register_plugin};
+use crate::plugin::dbus::{build_connection, register_plugin};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -22,8 +22,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     log::info!("Starting Playtron Plugin");
     let mut epic_service = EpicService::new();
     epic_service.initialize().await?;
-    let _conn = build_connection(epic_service).await?;
-    register_plugin(&_conn).await;
+    build_connection(epic_service).await?;
+    register_plugin().await;
 
     // Do other things or go to wait forever
     pending::<()>().await;

@@ -49,14 +49,9 @@ impl CloudSaveProvider {
     ) -> fdo::Result<()> {
         log::info!("Downloading cloud saves for {:?} ({:?})", app_id, platform);
         log::info!("Paths {:?}", paths);
-        match self
-            .service
+        self.service
             .cloud_save_download(app_id.as_str(), force)
             .await
-        {
-            Ok(_) => Ok(()),
-            Err(e) => Err(fdo::Error::Failed(e.to_string())),
-        }
     }
 
     /// Start uploading the save data for the given provider app
@@ -77,13 +72,6 @@ impl CloudSaveProvider {
     ) -> fdo::Result<()> {
         log::info!("Uploading cloud saves for {:?} ({:?})", app_id, platform);
         log::info!("Paths {:?}", paths);
-        match self
-            .service
-            .cloud_save_download(app_id.as_str(), force)
-            .await
-        {
-            Ok(_) => Ok(()),
-            Err(e) => Err(fdo::Error::Failed(e.to_string())),
-        }
+        self.service.cloud_save_upload(app_id.as_str(), force).await
     }
 }
