@@ -10,7 +10,7 @@ use crate::{
     },
     plugin::errors::PluginError,
     types::{
-        app::{AppEulaInformation, EpicStatusResponse},
+        app::{AppEulaInformation, EpicStatusResponse, Platform},
         cloud_sync::CloudSyncOperation,
         errors::{EmptyResult, ResultWithError},
     },
@@ -250,6 +250,21 @@ impl Legendary {
         Ok(response.into_iter().collect::<Vec<LegendaryGameListInfo>>())
     }
 
+    pub fn get_app_versions(&self, apps: Vec<LegendaryGameListInfo>) -> Vec<(String, String)> {
+        let mut app_versions = Vec::<(String, String)>::new();
+        let _ = apps
+            .iter()
+            .map(|game_info| {
+                if let Some(asset_info) = game_info.asset_infos.get(&Platform::Windows.to_string())
+                {
+                    app_versions
+                        .push((game_info.app_name.clone(), asset_info.build_version.clone()));
+                }
+            })
+            .collect::<Vec<()>>();
+        app_versions
+    }
+
     pub async fn get_game_info(
         &self,
         app_id: &str,
@@ -350,5 +365,19 @@ impl Legendary {
         )
         .await?;
         Ok(())
+    }
+
+    /// Retrieves the download size of this owned app
+    async fn get_download_size(&self, app_id: &str) -> ResultWithError<u64> {
+        let info = self.info(app_id).await?;
+        let download_size = info
+            .manifest
+            .tag_download_size
+            .iter()
+            .find(|x| x.tag.is_empty())
+            .map(|x| x.size)
+            .unwrap_or(info.manifest.download_size);
+
+        Ok(download_size)
     }
 }

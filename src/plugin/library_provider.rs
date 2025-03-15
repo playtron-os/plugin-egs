@@ -172,6 +172,20 @@ impl LibraryProvider {
         self.service.get_provider_items().await
     }
 
+    /// Returns all provider items and app versions.
+    ///
+    /// # Example
+    ///
+    /// busctl --user call one.playtron.EpicGames \
+    ///   /one/playtron/EpicGames/LegendaryClient0 \
+    ///   one.playtron.plugin.LibraryProvider \
+    ///   GetProviderItemsAndVersions
+    async fn get_provider_items_with_versions(
+        &self,
+    ) -> fdo::Result<(Vec<ProviderItem>, Vec<(String, String)>)> {
+        self.service.get_provider_items_and_versions().await
+    }
+
     /// Returns a list of available launch options. This includes information
     /// on how the game should be launched together with other useful metadata.
     ///
@@ -227,19 +241,6 @@ impl LibraryProvider {
         self.service.move_item(app_id, disk).await
     }
 
-    /// Trigger discovery of provider items. Should emit LibraryUpdated signal if new items are discovered.
-    ///
-    /// # Example
-    ///
-    /// busctl --user call one.playtron.EpicGames \
-    ///   /one/playtron/EpicGames/LegendaryClient0 \
-    ///   one.playtron.plugin.LibraryProvider \
-    ///   Refresh
-    fn refresh(&self) -> fdo::Result<()> {
-        log::info!("refresh");
-        Err(fdo::Error::Failed("Unimplemented".to_string()))
-    }
-
     /// Uninstalls the given app.
     ///
     /// # Example
@@ -292,5 +293,18 @@ impl LibraryProvider {
         log::info!("post launch hook");
         dbg!(using_offline_mode);
         vec![]
+    }
+
+    /// Trigger discovery of provider items. Should emit LibraryUpdated signal if new items are discovered.
+    ///
+    /// # Example
+    ///
+    /// busctl --user call one.playtron.EpicGames \
+    ///   /one/playtron/EpicGames/LegendaryClient0 \
+    ///   one.playtron.plugin.LibraryProvider \
+    ///   Refresh
+    fn refresh(&self) -> fdo::Result<()> {
+        log::info!("refresh");
+        Err(fdo::Error::Failed("Unimplemented".to_string()))
     }
 }

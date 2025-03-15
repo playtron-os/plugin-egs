@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
-use strum_macros::EnumString;
+use strum_macros::{Display, EnumString};
 use zbus::zvariant::{OwnedValue, Type, Value};
 
 #[derive(Serialize, Deserialize, Debug, Type, Clone)]
@@ -42,6 +42,16 @@ pub enum LaunchType {
     Tool,
     Document,
     Other,
+}
+
+#[derive(Serialize, Deserialize, Display, Debug, PartialEq, Eq, Clone)]
+#[serde(rename_all = "lowercase")]
+/// Platforms supported to donwload an app
+/// Right now only the steam downloader is using this to select different platforms
+pub enum Platform {
+    Linux,
+    Windows,
+    MacOS,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, Type)]

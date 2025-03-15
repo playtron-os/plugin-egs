@@ -55,9 +55,6 @@ impl EpicDownloader {
 
 #[async_trait::async_trait]
 pub trait ProviderDownloader {
-    async fn get_download_size(&self, app_id: &str) -> ResultWithError<u64>;
-    async fn install(&self, app_id: &str, reset_wine_prefix: bool) -> ResultWithError<bool>;
-    async fn uninstall(&self, app_id: &str) -> EmptyResult;
     async fn download(
         &self,
         session_mutex: Arc<tokio::sync::Mutex<()>>,
@@ -68,27 +65,6 @@ pub trait ProviderDownloader {
 
 #[async_trait::async_trait]
 impl ProviderDownloader for EpicDownloader {
-    /// Retrieves the download size of this owned app
-    async fn get_download_size(&self, app_id: &str) -> ResultWithError<u64> {
-        let info = Legendary::new(Some(self.config.clone()))
-            .info(app_id)
-            .await?;
-        let download_size = info
-            .manifest
-            .tag_download_size
-            .iter()
-            .find(|x| x.tag.is_empty())
-            .map(|x| x.size)
-            .unwrap_or(info.manifest.download_size);
-
-        Ok(download_size)
-    }
-
-    /// Handles app installation for this provider
-    async fn install(&self, app_id: &str, reset_wine_prefix: bool) -> ResultWithError<bool> {
-        handle_install(app_id, reset_wine_prefix, self.config.clone()).await
-    }
-
     /// Triggers a download for this provider
     async fn download(
         &self,

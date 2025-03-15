@@ -111,16 +111,29 @@ impl EpicService {
             Err(e) => Err(fdo::Error::Failed(e.to_string())),
         }
     }
-
     pub async fn get_provider_items(&self) -> fdo::Result<Vec<ProviderItem>> {
-        match self.legendary.get_apps().await {
-            Ok(apps) => {
-                let items: Vec<ProviderItem> =
-                    apps.iter().map(legendary_app_to_provider_item).collect();
-                Ok(items)
+        let apps = match self.legendary.get_apps().await {
+            Ok(apps) => apps,
+            Err(e) => {
+                return Err(fdo::Error::Failed(e.to_string()));
             }
-            Err(e) => Err(fdo::Error::Failed(e.to_string())),
-        }
+        };
+        let items: Vec<ProviderItem> = apps.iter().map(legendary_app_to_provider_item).collect();
+        Ok(items)
+    }
+
+    pub async fn get_provider_items_and_versions(
+        &self,
+    ) -> fdo::Result<(Vec<ProviderItem>, Vec<(String, String)>)> {
+        let apps = match self.legendary.get_apps().await {
+            Ok(apps) => apps,
+            Err(e) => {
+                return Err(fdo::Error::Failed(e.to_string()));
+            }
+        };
+        let items: Vec<ProviderItem> = apps.iter().map(legendary_app_to_provider_item).collect();
+        let app_versions = self.legendary.get_app_versions(apps);
+        Ok((items, app_versions))
     }
 
     pub async fn uninstall(&self, app_id: &str) -> fdo::Result<()> {
