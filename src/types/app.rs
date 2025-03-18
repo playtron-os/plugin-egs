@@ -178,18 +178,6 @@ pub struct ArtworkMetadata {
     images: Vec<ArtworkImage>,
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
-/// Response to epic status request
-pub struct EpicStatusResponse {
-    /// Account will be the display name of the epic account, and if it is empty, it means the user is logged out
-    pub account: String,
-    pub games_available: i32,
-    pub games_installed: i32,
-    pub egl_sync_enabled: bool,
-    pub config_directory: String,
-}
-
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Default, EnumString, Copy)]
 pub enum UserProviderStatus {
     #[default]
@@ -242,4 +230,23 @@ pub struct AppEulaInformation {
     pub country: String,
     pub language: String,
     pub owned_app_id: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone, Default)]
+pub enum PlaytronAppType {
+    #[default]
+    None,
+    Game,
+    #[serde(alias = "DLC")]
+    Dlc,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone, Default)]
+pub struct PlaytronImage {
+    #[serde(alias = "type")]
+    pub image_type: String,
+    pub url: String,
+    #[serde(default)]
+    pub alt: String,
+    pub source: String,
 }

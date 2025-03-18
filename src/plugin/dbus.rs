@@ -1,6 +1,6 @@
 use crate::constants::{BUS_NAME, CLIENT_PATH};
 use crate::epic::service::EpicService;
-use crate::types::errors::EmptyResult;
+use crate::types::results::EmptyResult;
 use crate::{auth, plugin};
 use serde::Serialize;
 use tokio::sync::Mutex;

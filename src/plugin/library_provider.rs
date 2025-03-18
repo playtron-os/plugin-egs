@@ -219,10 +219,14 @@ impl LibraryProvider {
     ///   /one/playtron/EpicGames/LegendaryClient0 \
     ///   one.playtron.plugin.LibraryProvider \
     ///   Install "ssa{sv}" "460950" "/dev/sda1" 2 'os' s windows 'language' s english
-    fn install(&self, app_id: &str, disk: &str, options: HashMap<&str, &str>) -> fdo::Result<u32> {
+    async fn install(
+        &self,
+        app_id: &str,
+        disk: &str,
+        options: HashMap<&str, &str>,
+    ) -> fdo::Result<u32> {
         log::info!("install {} on {}", app_id, disk);
-        dbg!(options);
-        Err(fdo::Error::Failed("Unimplemented".to_string()))
+        self.service.install(app_id, disk, options).await
     }
 
     async fn import(&self, app_id: &str, install_folder: &str) -> fdo::Result<()> {

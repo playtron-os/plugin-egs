@@ -1,4 +1,4 @@
-use crate::types::errors::U8Result;
+use crate::types::results::U8Result;
 use async_stream::try_stream;
 use futures::Stream;
 use log::{info, trace};
@@ -96,4 +96,8 @@ pub async fn move_folder_with_progress(
     };
 
     Box::pin(stream)
+}
+
+pub fn get_base_path(_disk: &str) -> String {
+    "/media/data/playtron/".to_string()
 }

@@ -1,5 +1,8 @@
 use crate::constants::LIBRARY_PROVIDER_ID;
-use crate::epic::{common::require_legendary, config::LegendaryConfig, legendary::Legendary};
+use crate::epic::{
+    common::require_legendary, config::LegendaryConfig, legendary::Legendary,
+    models::LegendaryGameListInfo,
+};
 use crate::plugin::dbus::emit_signal;
 use crate::types::app::{AppEulaInformation, AppType, InstalledApp, ProviderItem};
 use crate::types::cloud_sync::CloudSyncOperation;
@@ -8,9 +11,8 @@ use rsa::pkcs1::EncodeRsaPublicKey;
 use rsa::pkcs8::LineEnding;
 use rsa::{RsaPrivateKey, RsaPublicKey};
 use serde::Serialize;
+use std::collections::HashMap;
 use zbus::{fdo, zvariant::Type};
-
-use super::models::LegendaryGameListInfo;
 
 fn legendary_app_to_provider_item(legendary_app: &LegendaryGameListInfo) -> ProviderItem {
     ProviderItem {
@@ -139,6 +141,18 @@ impl EpicService {
     pub async fn uninstall(&self, app_id: &str) -> fdo::Result<()> {
         match self.legendary.uninstall(app_id).await {
             Ok(_) => Ok(()),
+            Err(e) => Err(fdo::Error::Failed(e.to_string())),
+        }
+    }
+
+    pub async fn install(
+        &self,
+        app_id: &str,
+        disk: &str,
+        options: HashMap<&str, &str>,
+    ) -> fdo::Result<u32> {
+        match self.legendary.download(app_id, disk, options).await {
+            Ok(_) => Ok(1),
             Err(e) => Err(fdo::Error::Failed(e.to_string())),
         }
     }

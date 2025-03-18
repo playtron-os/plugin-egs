@@ -6,23 +6,30 @@ use crate::{
             check_invalid_legendary_response, execute_legendary_handle_auth_json,
             get_app_install_dir, require_legendary,
         },
-        models::{LegendaryGameInfo, LegendaryGameListInfo, LegendaryInstalledGameResponse},
+        models::{
+            EpicStatusResponse, LegendaryGameInfo, LegendaryGameListInfo,
+            LegendaryInstalledGameResponse,
+        },
     },
     plugin::errors::PluginError,
     types::{
-        app::{AppEulaInformation, EpicStatusResponse, Platform},
+        app::{AppEulaInformation, Platform},
         cloud_sync::CloudSyncOperation,
-        errors::{EmptyResult, ResultWithError},
+        results::{EmptyResult, ResultWithError},
     },
-    utils::{child::command_sync, reaper::ReaperProcess, system::move_folder_with_progress},
+    utils::{
+        child::command_sync,
+        reaper::ReaperProcess,
+        system::{get_base_path, move_folder_with_progress},
+    },
 };
 use chrono::NaiveDateTime;
 use futures::StreamExt;
 use log::info;
 use parking_lot::Mutex;
 use regex::Regex;
-use std::future::Future;
 use std::process::Stdio;
+use std::{collections::HashMap, future::Future};
 
 use tokio::{fs, process::Command};
 
@@ -191,17 +198,66 @@ impl Legendary {
         Ok(response)
     }
 
+    /// Download a game
+    pub async fn download(
+        &self,
+        app_id: &str,
+        disk: &str,
+        options: HashMap<&str, &str>,
+    ) -> EmptyResult {
+        let base_path = get_base_path(disk);
+        let game_folder = app_id.to_string();
+        let mut arguments: Vec<String> = vec![
+            "install".to_owned(),
+            app_id.to_string(),
+            "--yes".to_owned(),
+            "--with-dlcs".to_owned(),
+            "--base-path".to_owned(),
+            base_path,
+            "--game-folder".to_owned(),
+            game_folder,
+            "--skip-sdl".to_owned(),
+        ];
+        let custom_shared_memory = std::env::var("CUSTOM_LEGENDARY_INSTALL_SHARED_MEMORY");
+        if let Ok(custom_shared_memory) = custom_shared_memory {
+            let numeric_value = custom_shared_memory.parse::<u64>();
+            if let Ok(numeric_value) = numeric_value {
+                if numeric_value > 0 {
+                    arguments.push("--max-shared-memory".to_owned());
+                    arguments.push(custom_shared_memory);
+                }
+            }
+        }
+
+        // Check if verifying game files
+        if options.contains_key("verify") {
+            arguments[0] = "repair".to_owned();
+            arguments.push("--repair-and-update".to_owned());
+        }
+        // Execute legendary command
+        let mut reaper = ReaperProcess::new(&self.config.legendary_command);
+        reaper.with_identifier(app_id.to_string());
+        reaper
+            .command
+            .args(arguments)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        reaper.execute().await?;
+
+        let _stdout = reaper.stdout().await?;
+        let _stderr = reaper.stderr().await?;
+
+        Ok(())
+    }
+
     /// Imports a game into legendary
-    pub async fn import(&self, app_provider_id: &str, install_folder: &str) -> EmptyResult {
-        info!(
-            "Legendary import game called for provider_id:{}",
-            app_provider_id
-        );
+    pub async fn import(&self, app_id: &str, install_folder: &str) -> EmptyResult {
+        info!("Legendary import game called for provider_id:{}", app_id);
 
         let mut reaper = ReaperProcess::new(&self.config.legendary_command);
         reaper.command.args([
             "import",
-            app_provider_id,
+            app_id,
             install_folder,
             "--with-dlcs",
             "--disable-check",
@@ -367,6 +423,7 @@ impl Legendary {
         Ok(())
     }
 
+    #[allow(dead_code)]
     /// Retrieves the download size of this owned app
     async fn get_download_size(&self, app_id: &str) -> ResultWithError<u64> {
         let info = self.info(app_id).await?;

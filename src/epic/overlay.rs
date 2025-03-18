@@ -3,7 +3,7 @@ use std::{path::PathBuf, process::Stdio};
 use tokio::{io::BufReader, process::ChildStderr};
 
 use super::config::LegendaryConfig;
-use crate::types::errors::{EmptyResult, ResultWithError};
+use crate::types::results::{EmptyResult, ResultWithError};
 use crate::utils::child::command;
 use crate::utils::reaper::ReaperProcess;
 

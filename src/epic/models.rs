@@ -3,6 +3,11 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::{
+    constants::LIBRARY_PROVIDER_ID,
+    types::app::{AppType, InstalledApp, PlaytronImage},
+};
+
 fn default_empty_string() -> String {
     "".to_string()
 }
@@ -44,7 +49,7 @@ pub struct LegendaryCustomAttributes {
     pub cloud_save_folder: Option<LegendaryCustomAttribute>,
 }
 
-#[derive(Serialize, Deserialize, Default, Debug)]
+#[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct LegendaryKeyImage {
     pub width: u32,
     pub height: u32,
@@ -80,6 +85,49 @@ pub struct LegendaryGameListInfo {
     pub asset_infos: HashMap<String, LegendaryAssetInfo>,
     /// Metadata related to the game
     pub metadata: LegendaryMetadata,
+}
+
+impl LegendaryGameListInfo {
+    pub fn get_app_type(&self) -> Option<AppType> {
+        let mut app_type: Option<AppType> = None;
+        for category in &self.metadata.categories {
+            match category.path.as_str() {
+                "games" => {
+                    app_type = Some(AppType::Game);
+                    break;
+                }
+                "addons" => {
+                    app_type = Some(AppType::Dlc);
+                    break;
+                }
+                _ => (),
+            }
+        }
+        let app_type = app_type.unwrap_or(AppType::Game);
+        Some(app_type)
+    }
+
+    pub fn get_images(&self) -> Vec<PlaytronImage> {
+        self.metadata
+            .key_images
+            .clone()
+            .into_iter()
+            .map(|epic_image| {
+                let image_type = match epic_image.image_type.as_str() {
+                    "DieselGameBox" => "OfferImageWide",
+                    "DieselGameBoxTall" => "OfferImageTall",
+                    _ => &epic_image.image_type,
+                }
+                .to_owned();
+                PlaytronImage {
+                    url: epic_image.url,
+                    image_type,
+                    source: LIBRARY_PROVIDER_ID.to_string(),
+                    alt: epic_image.alt,
+                }
+            })
+            .collect()
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -177,6 +225,40 @@ pub struct LegendaryGameInfo {
     pub install: Option<LegendaryGameInstall>,
 }
 
+impl LegendaryGameInfo {
+    pub fn get_disk_size(&self) -> u64 {
+        self.manifest
+            .tag_disk_size
+            .iter()
+            .find(|x| x.tag.is_empty())
+            .map(|x| x.size)
+            .unwrap_or(self.manifest.disk_size)
+    }
+
+    pub fn get_download_size(&self) -> u64 {
+        self.manifest
+            .tag_download_size
+            .iter()
+            .find(|x| x.tag.is_empty())
+            .map(|x| x.size)
+            .unwrap_or(self.manifest.download_size)
+    }
+
+    pub fn to_installed_app(&self) -> InstalledApp {
+        InstalledApp {
+            app_id: self.game.app_name.clone(),
+            installed_path: "".to_string(),
+            downloaded_bytes: 0,
+            total_download_size: self.get_download_size(),
+            disk_size: self.get_disk_size(),
+            version: self.game.version.clone(),
+            latest_version: "".to_string(),
+            update_pending: false,
+            os: "windows".to_string(),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct LegendaryEula {
     pub key: String,
@@ -211,6 +293,18 @@ pub struct LegendaryInstalledGameResponse {
     pub version: String,
 }
 
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Response to epic status request
+pub struct EpicStatusResponse {
+    /// Account will be the display name of the epic account, and if it is empty, it means the user is logged out
+    pub account: String,
+    pub games_available: i32,
+    pub games_installed: i32,
+    pub egl_sync_enabled: bool,
+    pub config_directory: String,
+}
+
 pub enum ProtonVerb {
     /// For running setup commands
     Run,
@@ -239,4 +333,10 @@ pub enum DownloadStage {
     Installing,
     Done,
     UpdatePending,
+}
+
+#[derive(PartialEq)]
+pub enum DownloadSizeType {
+    Disk,
+    Download,
 }

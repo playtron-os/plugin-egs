@@ -20,7 +20,7 @@ use tokio::{
 
 use crate::{
     plugin::errors::PluginError,
-    types::errors::{EmptyResult, ResultWithError},
+    types::results::{EmptyResult, ResultWithError},
     utils::child::{
         command, deserialize_json, get_children_pids, sig_continue, sig_kill, sig_stop,
         sig_terminate, stdio_from_raw_fd, stdio_from_raw_fd_with_ownership,
@@ -326,6 +326,13 @@ impl ReaperProcess {
     {
         let (_, output, _) = self.execute_with_output(callback).await?;
         deserialize_json::<R>(output)
+    }
+
+    pub async fn stdout(&mut self) -> ResultWithError<ChildStdout> {
+        self.verify_started().await?;
+        self.child_stdout
+            .take()
+            .ok_or("Error unwrapping reaper child stdout".into())
     }
 
     pub async fn stderr(&mut self) -> ResultWithError<ChildStderr> {

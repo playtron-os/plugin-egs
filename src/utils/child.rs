@@ -1,5 +1,5 @@
 use super::strings::regex_capture;
-use crate::{plugin::errors::PluginError, types::errors::ResultWithError};
+use crate::{plugin::errors::PluginError, types::results::ResultWithError};
 
 use futures::Future;
 use lazy_static::lazy_static;

@@ -1,19 +1,23 @@
 //! This is a common module that contains common epic apps related functions
 
-use std::ffi::OsStr;
-
 use convert_case::{Case, Casing};
+use lazy_static::lazy_static;
 use regex::Regex;
 use serde::de::DeserializeOwned;
+use std::ffi::OsStr;
+use std::path::PathBuf;
 
+use crate::epic::models::DownloadSizeType;
 use crate::plugin::errors::PluginError;
-use crate::types::errors::ResultWithError;
+use crate::types::results::ResultWithError;
 use crate::utils::{
     child::{command_with_callback, command_with_callback_json},
     system::is_program_in_path,
 };
 
-lazy_static::lazy_static! {
+use super::models::LegendaryGameListInfo;
+
+lazy_static! {
     // Internet connection error regex
     static ref INTERNET_ERROR_REGEX: Regex =
         Regex::new(r"Failed to establish a new connection").unwrap();
@@ -27,6 +31,29 @@ lazy_static::lazy_static! {
         r"(No saved credentials|AttributeError: 'NoneType' object has no attribute 'get')"
     )
     .unwrap();
+}
+
+lazy_static! {
+    // Progress match regex
+    static ref DOWNLOADED_SIZE_REGEX: Regex = Regex::new(r"Downloaded: (\d+\.\d+)").unwrap();
+    static ref WRITTEN_SIZE_REGEX: Regex = Regex::new(r"Written: (\d+\.\d+)").unwrap();
+
+    static ref VERIFICATION_PROGRESS_REGEX: Regex = Regex::new(r"Verification progress:.*\((\d+\.?\d*)%").unwrap();
+    static ref VERIFYING_LARGE_FILE_REGEX: Regex = Regex::new(r"Verifying large file .* (\d+\.?\d*)% \(\d+\.?\d+?\/(\d+\.?\d+?)").unwrap();
+
+    // Success match regex, this means the download finished or there was nothing to download
+    static ref SUCCESS_REGEX: Regex = Regex::new(
+        r"(Finished installation process|the game is either already up to date or has not changed)"
+    )
+    .unwrap();
+
+    // Not authed error match regex, also matches if the user is not connected to the internet
+    static ref NOT_AUTHED_ERROR_REGEX: Regex =
+        Regex::new(r"(No saved credentials|Login failed!)").unwrap();
+
+    // No internet during download error match regex
+    pub static ref NO_INTERNET_ERROR_REGEX: Regex =
+        Regex::new(r"Max retries exceeded with url").unwrap();
 }
 
 pub fn get_legendary_command() -> String {
@@ -101,4 +128,43 @@ where
         Ok(res) => Ok(res),
         Err(err) => Err(err),
     }
+}
+
+#[allow(dead_code)]
+fn parse_size(line: &str, download_size_type: DownloadSizeType) -> ResultWithError<f32> {
+    let compare_str = if download_size_type == DownloadSizeType::Disk {
+        "Install size: "
+    } else {
+        "Download size: "
+    };
+
+    if !line.contains(compare_str) {
+        return Err("No download size found".into());
+    }
+
+    let size = line
+        .split(compare_str)
+        .last()
+        .unwrap_or_default()
+        .split(' ')
+        .next()
+        .unwrap_or_default();
+
+    Ok(size.parse()?)
+}
+
+#[allow(dead_code)]
+pub async fn read_metadata_from_cache(app_id: &str) -> ResultWithError<LegendaryGameListInfo> {
+    let config_home = std::env::var("XDG_CONFIG_HOME")
+        .or_else(|_err| std::env::var("HOME").map(|var| format!("{var}/.config")))?;
+    let metadata_path: PathBuf =
+        format!("{config_home}/legendary/metadata/{app_id}.json").parse()?;
+
+    if !metadata_path.exists() {
+        return Err("App not found".into());
+    }
+
+    let game_info_raw = tokio::fs::read_to_string(&metadata_path).await?;
+    let game_info: LegendaryGameListInfo = serde_json::from_str(&game_info_raw)?;
+    Ok(game_info)
 }
