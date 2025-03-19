@@ -1,4 +1,4 @@
-#![allow(dead_code)]
+// #![allow(dead_code)]
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
@@ -88,6 +88,7 @@ pub struct LegendaryGameListInfo {
 }
 
 impl LegendaryGameListInfo {
+    #[allow(dead_code)]
     pub fn get_app_type(&self) -> Option<AppType> {
         let mut app_type: Option<AppType> = None;
         for category in &self.metadata.categories {
@@ -107,6 +108,7 @@ impl LegendaryGameListInfo {
         Some(app_type)
     }
 
+    #[allow(dead_code)]
     pub fn get_images(&self) -> Vec<PlaytronImage> {
         self.metadata
             .key_images
@@ -166,6 +168,7 @@ pub struct LegendaryGameManifestPrerequisites {
 }
 
 impl LegendaryGameManifestPrerequisites {
+    #[allow(dead_code)]
     pub fn get_prerequisite_id(&self) -> String {
         self.ids
             .first()
@@ -244,6 +247,7 @@ impl LegendaryGameInfo {
             .unwrap_or(self.manifest.download_size)
     }
 
+    #[allow(dead_code)]
     pub fn to_installed_app(&self) -> InstalledApp {
         InstalledApp {
             app_id: self.game.app_name.clone(),
@@ -252,7 +256,7 @@ impl LegendaryGameInfo {
             total_download_size: self.get_download_size(),
             disk_size: self.get_disk_size(),
             version: self.game.version.clone(),
-            latest_version: "".to_string(),
+            latest_version: self.game.version.clone(),
             update_pending: false,
             os: "windows".to_string(),
         }
@@ -303,23 +307,6 @@ pub struct EpicStatusResponse {
     pub games_installed: i32,
     pub egl_sync_enabled: bool,
     pub config_directory: String,
-}
-
-pub enum ProtonVerb {
-    /// For running setup commands
-    Run,
-    /// Generally not used, use only when you know what you are doing
-    /// and need a stdout from command you ran
-    RunInPrefix,
-    /// Wait for any wineserver instances to exit and run the executable
-    /// Used for main game launch
-    WaitForExitAndRun,
-    /// Map Linux -> Windows path
-    GetCompatPath,
-    /// Map Windows -> Linux path
-    GetNativePath,
-    /// Delete proton's tracked files - NUKE!
-    DestroyPrefix,
 }
 
 #[derive(PartialEq)]

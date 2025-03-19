@@ -208,15 +208,13 @@ impl LibraryProvider {
     ///   /one/playtron/EpicGames/LegendaryClient0 \
     ///   one.playtron.plugin.LibraryProvider \
     ///   GetLaunchOptions "s" "460950"
-    fn get_launch_options(&self, app_id: String) -> fdo::Result<Vec<LaunchOption>> {
-        log::info!("get_launch_options for {}", app_id);
-        Err(fdo::Error::Failed("Unimplemented".to_string()))
+    async fn get_launch_options(&self, app_id: String) -> fdo::Result<Vec<LaunchOption>> {
+        self.service.get_launch_options(app_id).await
     }
 
-    /// TODO  Undocumented
-    fn get_post_install_steps(&self, app_id: String) -> fdo::Result<String> {
-        log::info!("get_post_install_steps for {}", app_id);
-        Err(fdo::Error::Failed("Unimplemented".to_string()))
+    /// Return the components to be installed after the game is downloaded
+    async fn get_post_install_steps(&self, app_id: String) -> fdo::Result<String> {
+        self.service.get_post_install_steps(app_id).await
     }
 
     /// Start installing the app with the given provider app id to the given

@@ -5,7 +5,7 @@ use crate::epic::{
     models::LegendaryGameListInfo, signals,
 };
 
-use crate::types::app::{AppEulaInformation, AppType, InstalledApp, ProviderItem};
+use crate::types::app::{AppEulaInformation, AppType, InstalledApp, LaunchOption, ProviderItem};
 use crate::types::cloud_sync::CloudSyncOperation;
 use rand;
 use rsa::pkcs1::EncodeRsaPublicKey;
@@ -148,10 +148,25 @@ impl EpicService {
     ) -> fdo::Result<u32> {
         match self
             .legendary
-            .download(app_id.to_string(), disk.to_string(), options)
+            .install(app_id.to_string(), disk.to_string(), options)
             .await
         {
             Ok(_) => Ok(1),
+            Err(e) => Err(fdo::Error::Failed(e.to_string())),
+        }
+    }
+
+    pub async fn get_launch_options(&self, app_id: String) -> fdo::Result<Vec<LaunchOption>> {
+        match self.legendary.get_launch_options(app_id).await {
+            Ok(launch_options) => Ok(launch_options),
+            Err(e) => Err(fdo::Error::Failed(e.to_string())),
+        }
+    }
+
+    pub async fn get_post_install_steps(&self, app_id: String) -> fdo::Result<String> {
+        let post_install_steps = self.legendary.get_prerequisites(&app_id).await;
+        match post_install_steps {
+            Ok(post_install_steps) => Ok(serde_json::to_string(&post_install_steps).unwrap()),
             Err(e) => Err(fdo::Error::Failed(e.to_string())),
         }
     }
@@ -164,7 +179,6 @@ impl EpicService {
     }
 
     pub async fn move_item(&self, app_id: String, disk: String) -> fdo::Result<()> {
-        log::info!("Moving {:?} to {:?}", app_id, disk);
         match self
             .legendary
             .move_app_to_drive(app_id.as_str(), &disk, &signals::notify_move_progress)

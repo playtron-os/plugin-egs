@@ -15,7 +15,10 @@ use crate::{
     },
     plugin::errors::PluginError,
     types::{
-        app::{AppDownloadProgress, AppEulaInformation, DownloadStage, Platform},
+        app::{
+            AppDownloadProgress, AppEulaInformation, DownloadStage, LaunchOption, LaunchType,
+            Platform,
+        },
         cloud_sync::CloudSyncOperation,
         results::{EmptyResult, ResultWithError},
     },
@@ -41,7 +44,9 @@ use std::{collections::HashMap, future::Future};
 use tokio::{fs, process::Command, sync::mpsc::Receiver, time::Instant};
 
 use super::{
-    common::execute_legendary_handle_auth_raw, config::LegendaryConfig, models::LegendaryEula,
+    common::execute_legendary_handle_auth_raw,
+    config::LegendaryConfig,
+    models::{LegendaryEula, LegendaryGameManifestPrerequisites},
 };
 
 pub fn get_wine_prefix_path(app_id: &str) -> ResultWithError<String> {
@@ -229,14 +234,43 @@ impl Legendary {
         Ok(response)
     }
 
+    /// Return launch options for a game
+    pub async fn get_launch_options(&self, app_id: String) -> ResultWithError<Vec<LaunchOption>> {
+        let game_info = self.info(&app_id).await?;
+        let launch_options: Vec<LaunchOption> = game_info
+            .game
+            .launch_options
+            .iter()
+            .map(|launch_option| LaunchOption {
+                description: launch_option.name.clone(),
+                executable: game_info.manifest.launch_exe.clone(),
+                arguments: launch_option.parameters.clone(),
+                working_directory: "".to_string(),
+                environment: [].to_vec(),
+                launch_type: LaunchType::Game,
+                hardware_tags: [].to_vec(),
+            })
+            .collect();
+        Ok(launch_options)
+    }
+
+    /// Return prerequisites for a game
+    pub async fn get_prerequisites(
+        &self,
+        app_id: &str,
+    ) -> ResultWithError<Option<LegendaryGameManifestPrerequisites>> {
+        let game_info = self.info(app_id).await?;
+        Ok(game_info.manifest.prerequisites)
+    }
+
     /// Download a game
-    pub async fn download(
+    pub async fn install(
         &self,
         app_id: String,
         disk: String,
         options: HashMap<&str, &str>,
     ) -> ResultWithError<Receiver<AppDownloadProgress>> {
-        let (_tx, rc) = tokio::sync::mpsc::channel::<AppDownloadProgress>(128);
+        let (_, rc) = tokio::sync::mpsc::channel::<AppDownloadProgress>(128);
         let base_path = get_base_path(&disk);
         let game_folder = app_id.to_string();
         let game_info: LegendaryGameInfo = self.info(&app_id).await.unwrap();

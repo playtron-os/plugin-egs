@@ -35,29 +35,6 @@ lazy_static! {
     .unwrap();
 }
 
-lazy_static! {
-    // Progress match regex
-    static ref DOWNLOADED_SIZE_REGEX: Regex = Regex::new(r"Downloaded: (\d+\.\d+)").unwrap();
-    static ref WRITTEN_SIZE_REGEX: Regex = Regex::new(r"Written: (\d+\.\d+)").unwrap();
-
-    static ref VERIFICATION_PROGRESS_REGEX: Regex = Regex::new(r"Verification progress:.*\((\d+\.?\d*)%").unwrap();
-    static ref VERIFYING_LARGE_FILE_REGEX: Regex = Regex::new(r"Verifying large file .* (\d+\.?\d*)% \(\d+\.?\d+?\/(\d+\.?\d+?)").unwrap();
-
-    // Success match regex, this means the download finished or there was nothing to download
-    static ref SUCCESS_REGEX: Regex = Regex::new(
-        r"(Finished installation process|the game is either already up to date or has not changed)"
-    )
-    .unwrap();
-
-    // Not authed error match regex, also matches if the user is not connected to the internet
-    static ref NOT_AUTHED_ERROR_REGEX: Regex =
-        Regex::new(r"(No saved credentials|Login failed!)").unwrap();
-
-    // No internet during download error match regex
-    pub static ref NO_INTERNET_ERROR_REGEX: Regex =
-        Regex::new(r"Max retries exceeded with url").unwrap();
-}
-
 pub fn get_legendary_command() -> String {
     std::env::var("LEGENDARY").unwrap_or("legendary".to_owned())
 }
@@ -155,6 +132,7 @@ pub fn parse_size(line: &str, download_size_type: DownloadSizeType) -> ResultWit
 }
 
 #[allow(dead_code)]
+/// Read game metadata from Legendary's cache instead of querying Legendary itself
 pub async fn read_metadata_from_cache(app_id: &str) -> ResultWithError<LegendaryGameListInfo> {
     let config_home = std::env::var("XDG_CONFIG_HOME")
         .or_else(|_err| std::env::var("HOME").map(|var| format!("{var}/.config")))?;

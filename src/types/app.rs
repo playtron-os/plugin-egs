@@ -27,13 +27,6 @@ pub struct InstalledApp {
     pub os: String,
 }
 
-#[allow(dead_code)]
-// Used only in Playserve
-pub enum PluginType {
-    LibraryProvider,
-    ArtworkProvider,
-}
-
 #[derive(Serialize, Deserialize, Debug, Type)]
 pub enum LaunchType {
     Unknown,
@@ -267,13 +260,11 @@ pub struct AppDownloadProgress {
     /// Progress, from 0.0 to 100.0
     pub progress: f32,
     /// Bytes already downloaded
-    #[serde(default)]
     pub bytes: u64,
     /// Error if any happened
     pub error: String,
     /// Error code of the error
     pub error_code: Option<u16>,
     /// Last Modified header value from download request
-    #[serde(default)]
     pub last_modified: Option<String>,
 }
