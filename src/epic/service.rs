@@ -1,18 +1,19 @@
 use crate::constants::LIBRARY_PROVIDER_ID;
+use crate::epic::signals::notify_move_item_failed;
 use crate::epic::{
     common::require_legendary, config::LegendaryConfig, legendary::Legendary,
-    models::LegendaryGameListInfo,
+    models::LegendaryGameListInfo, signals,
 };
-use crate::plugin::dbus::emit_signal;
+
 use crate::types::app::{AppEulaInformation, AppType, InstalledApp, ProviderItem};
 use crate::types::cloud_sync::CloudSyncOperation;
 use rand;
 use rsa::pkcs1::EncodeRsaPublicKey;
 use rsa::pkcs8::LineEnding;
 use rsa::{RsaPrivateKey, RsaPublicKey};
-use serde::Serialize;
+
 use std::collections::HashMap;
-use zbus::{fdo, zvariant::Type};
+use zbus::fdo;
 
 fn legendary_app_to_provider_item(legendary_app: &LegendaryGameListInfo) -> ProviderItem {
     ProviderItem {
@@ -28,12 +29,6 @@ pub struct EpicService {
     legendary: Legendary,
     rsa: RsaPrivateKey,
     pub account: Option<String>,
-}
-
-#[derive(Serialize, Type)]
-struct MoveProgressBody {
-    app_id: String,
-    progress: f32,
 }
 
 impl EpicService {
@@ -151,7 +146,11 @@ impl EpicService {
         disk: &str,
         options: HashMap<&str, &str>,
     ) -> fdo::Result<u32> {
-        match self.legendary.download(app_id, disk, options).await {
+        match self
+            .legendary
+            .download(app_id.to_string(), disk.to_string(), options)
+            .await
+        {
             Ok(_) => Ok(1),
             Err(e) => Err(fdo::Error::Failed(e.to_string())),
         }
@@ -168,11 +167,14 @@ impl EpicService {
         log::info!("Moving {:?} to {:?}", app_id, disk);
         match self
             .legendary
-            .move_app_to_drive(app_id.as_str(), &disk, &notify_move_progress)
+            .move_app_to_drive(app_id.as_str(), &disk, &signals::notify_move_progress)
             .await
         {
             Ok(_) => Ok(()),
-            Err(e) => Err(fdo::Error::Failed(e.to_string())),
+            Err(e) => {
+                notify_move_item_failed(app_id, e.to_string()).await;
+                Err(fdo::Error::Failed(e.to_string()))
+            }
         }
     }
 
@@ -214,18 +216,4 @@ impl EpicService {
             Err(e) => Err(fdo::Error::Failed(e.to_string())),
         }
     }
-}
-
-pub async fn notify_move_progress(app_id: String, progress: u8) {
-    log::info!("move_item_progressed {}", progress);
-    let body = MoveProgressBody {
-        app_id,
-        progress: progress as f32,
-    };
-    emit_signal(
-        "one.playtron.plugin.LibraryProvider".to_string(),
-        "move_item_progressed".to_string(),
-        body,
-    )
-    .await
 }

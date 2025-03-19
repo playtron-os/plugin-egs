@@ -17,6 +17,8 @@ use crate::utils::{
 
 use super::models::LegendaryGameListInfo;
 
+pub const EPIC_MAX_WRITER_QUEUE_EMPTY_ERROR_COUNT: u16 = 3;
+
 lazy_static! {
     // Internet connection error regex
     static ref INTERNET_ERROR_REGEX: Regex =
@@ -130,8 +132,7 @@ where
     }
 }
 
-#[allow(dead_code)]
-fn parse_size(line: &str, download_size_type: DownloadSizeType) -> ResultWithError<f32> {
+pub fn parse_size(line: &str, download_size_type: DownloadSizeType) -> ResultWithError<f32> {
     let compare_str = if download_size_type == DownloadSizeType::Disk {
         "Install size: "
     } else {

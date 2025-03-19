@@ -250,3 +250,30 @@ pub struct PlaytronImage {
     pub alt: String,
     pub source: String,
 }
+
+#[derive(Serialize, Deserialize, Debug, Type, PartialEq, Clone)]
+/// The current download stage of a downloading app from a plugin
+pub enum DownloadStage {
+    Preallocating = 0,
+    Downloading = 1,
+    Verifying = 2,
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+/// This response is sent in the background while the download is in progress
+pub struct AppDownloadProgress {
+    /// Current stage of the donwload
+    pub stage: DownloadStage,
+    /// Progress, from 0.0 to 100.0
+    pub progress: f32,
+    /// Bytes already downloaded
+    #[serde(default)]
+    pub bytes: u64,
+    /// Error if any happened
+    pub error: String,
+    /// Error code of the error
+    pub error_code: Option<u16>,
+    /// Last Modified header value from download request
+    #[serde(default)]
+    pub last_modified: Option<String>,
+}

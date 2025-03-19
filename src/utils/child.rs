@@ -24,8 +24,8 @@ use std::{
 };
 use tokio::{
     // fs,
-    io::{AsyncBufReadExt, BufReader},
-    process::Command,
+    io::{AsyncBufReadExt, AsyncReadExt, BufReader},
+    process::{ChildStderr, ChildStdout, Command},
     sync::mpsc,
 };
 
@@ -296,4 +296,107 @@ pub async fn command_sync() {
         Ok((_, _, status)) => log::debug!("Sync command ran with status:{status}"),
         Err(err) => log::error!("Sync command failed with err:{err:?}"),
     };
+}
+
+// Enum to distinguish between stdout and stderr lines
+#[derive(Debug)]
+pub enum OutputLine {
+    Stdout(String),
+    Stderr(String),
+}
+
+/// Spawns tasks to read stdout and stderr byte-by-byte and sends lines to a single receiver.
+/// Returns the receiver for processing the combined output.
+pub fn stream_process_output(
+    stdout: ChildStdout,
+    stderr: ChildStderr,
+) -> mpsc::Receiver<OutputLine> {
+    let (tx, rx) = mpsc::channel(100); // Buffer size of 100 lines
+
+    // Task for stdout
+    tokio::spawn({
+        let tx = tx.clone();
+        async move {
+            let mut stdout = BufReader::new(stdout);
+            let mut buffer = [0; 1];
+            let mut line = Vec::new();
+            let mut last_line = "".to_owned();
+
+            loop {
+                match stdout.read(&mut buffer).await {
+                    Ok(0) => {
+                        // EOF
+                        if !line.is_empty() {
+                            let new_line = String::from_utf8_lossy(&line).into_owned();
+                            let _ = tx.send(OutputLine::Stdout(new_line.clone())).await;
+                        }
+                        log::trace!("stdout closed");
+                        break;
+                    }
+                    Ok(_) => {
+                        if buffer[0] == b'\r' || buffer[0] == b'\n' {
+                            let output = String::from_utf8_lossy(&line).into_owned();
+                            if !output.is_empty() && last_line != output {
+                                last_line = output.clone();
+                                let _ = tx.send(OutputLine::Stdout(output)).await;
+                            }
+                            line.clear();
+                        } else {
+                            line.push(buffer[0]);
+                        }
+                    }
+                    Err(e) => {
+                        log::error!("Error reading stdout: {}", e);
+                        break;
+                    }
+                }
+            }
+        }
+    });
+
+    // Task for stderr
+    tokio::spawn({
+        let tx = tx.clone();
+        async move {
+            let mut stderr = BufReader::new(stderr);
+            let mut buffer = [0; 1];
+            let mut line = Vec::new();
+            let mut last_line = "".to_owned();
+
+            loop {
+                match stderr.read(&mut buffer).await {
+                    Ok(0) => {
+                        // EOF
+                        if !line.is_empty() {
+                            let _ = tx
+                                .send(OutputLine::Stderr(
+                                    String::from_utf8_lossy(&line).into_owned(),
+                                ))
+                                .await;
+                        }
+                        log::trace!("stderr closed");
+                        break;
+                    }
+                    Ok(_) => {
+                        if buffer[0] == b'\r' || buffer[0] == b'\n' {
+                            let output = String::from_utf8_lossy(&line).into_owned();
+                            if !output.is_empty() && last_line != output {
+                                last_line = output.clone();
+                                let _ = tx.send(OutputLine::Stderr(output)).await;
+                            }
+                            line.clear();
+                        } else {
+                            line.push(buffer[0]);
+                        }
+                    }
+                    Err(e) => {
+                        log::error!("Error reading stderr: {}", e);
+                        break;
+                    }
+                }
+            }
+        }
+    });
+
+    rx
 }

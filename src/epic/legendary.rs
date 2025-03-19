@@ -4,34 +4,41 @@ use crate::{
     epic::{
         common::{
             check_invalid_legendary_response, execute_legendary_handle_auth_json,
-            get_app_install_dir, require_legendary,
+            get_app_install_dir, parse_size, require_legendary,
+            EPIC_MAX_WRITER_QUEUE_EMPTY_ERROR_COUNT,
         },
         models::{
-            EpicStatusResponse, LegendaryGameInfo, LegendaryGameListInfo,
+            DownloadSizeType, EpicStatusResponse, LegendaryGameInfo, LegendaryGameListInfo,
             LegendaryInstalledGameResponse,
         },
+        signals::{self, notify_install_progressed},
     },
     plugin::errors::PluginError,
     types::{
-        app::{AppEulaInformation, Platform},
+        app::{AppDownloadProgress, AppEulaInformation, DownloadStage, Platform},
         cloud_sync::CloudSyncOperation,
         results::{EmptyResult, ResultWithError},
     },
     utils::{
-        child::command_sync,
+        child::{command_sync, stream_process_output, OutputLine},
         reaper::ReaperProcess,
-        system::{get_base_path, move_folder_with_progress},
+        strings::regex_capture,
+        system::{
+            bytes_to_megabytes, get_base_path, megabytes_to_bytes, move_folder_with_progress,
+        },
     },
 };
 use chrono::NaiveDateTime;
 use futures::StreamExt;
+use std::time::Duration;
+
 use log::info;
 use parking_lot::Mutex;
 use regex::Regex;
 use std::process::Stdio;
 use std::{collections::HashMap, future::Future};
 
-use tokio::{fs, process::Command};
+use tokio::{fs, process::Command, sync::mpsc::Receiver, time::Instant};
 
 use super::{
     common::execute_legendary_handle_auth_raw, config::LegendaryConfig, models::LegendaryEula,
@@ -43,10 +50,34 @@ pub fn get_wine_prefix_path(app_id: &str) -> ResultWithError<String> {
 }
 
 lazy_static::lazy_static! {
+    // Progress match regex
+    static ref DOWNLOADED_SIZE_REGEX: Regex = Regex::new(r"Downloaded: (\d+\.\d+)").unwrap();
+    static ref WRITTEN_SIZE_REGEX: Regex = Regex::new(r"Written: (\d+\.\d+)").unwrap();
+
+    static ref VERIFICATION_PROGRESS_REGEX: Regex = Regex::new(r"Verification progress:.*\((\d+\.?\d*)%").unwrap();
+    static ref VERIFYING_LARGE_FILE_REGEX: Regex = Regex::new(r"Verifying large file .* (\d+\.?\d*)% \(\d+\.?\d+?\/(\d+\.?\d+?)").unwrap();
+
+    // Success match regex, this means the download finished or there was nothing to download
+    static ref SUCCESS_REGEX: Regex = Regex::new(
+        r"(Finished installation process|the game is either already up to date or has not changed)"
+    )
+    .unwrap();
+
+    // Not authed error match regex, also matches if the user is not connected to the internet
+    static ref NOT_AUTHED_ERROR_REGEX: Regex =
+        Regex::new(r"(No saved credentials|Login failed!)").unwrap();
+
+    // No internet during download error match regex
+    pub static ref NO_INTERNET_ERROR_REGEX: Regex =
+        Regex::new(r"Max retries exceeded with url").unwrap();
+}
+
+lazy_static::lazy_static! {
     /// Whether owned apps are being fetched
     pub static ref FETCHING_APPS: Mutex<bool> = Mutex::new(false);
     static ref SAVE_DATES_REGEX: Regex = Regex::new(r"save date: (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})").unwrap();
 }
+
 #[derive(Clone)]
 pub struct Legendary {
     config: LegendaryConfig,
@@ -201,12 +232,14 @@ impl Legendary {
     /// Download a game
     pub async fn download(
         &self,
-        app_id: &str,
-        disk: &str,
+        app_id: String,
+        disk: String,
         options: HashMap<&str, &str>,
-    ) -> EmptyResult {
-        let base_path = get_base_path(disk);
+    ) -> ResultWithError<Receiver<AppDownloadProgress>> {
+        let (_tx, rc) = tokio::sync::mpsc::channel::<AppDownloadProgress>(128);
+        let base_path = get_base_path(&disk);
         let game_folder = app_id.to_string();
+        let game_info: LegendaryGameInfo = self.info(&app_id).await.unwrap();
         let mut arguments: Vec<String> = vec![
             "install".to_owned(),
             app_id.to_string(),
@@ -244,10 +277,25 @@ impl Legendary {
             .stderr(Stdio::piped());
         reaper.execute().await?;
 
-        let _stdout = reaper.stdout().await?;
-        let _stderr = reaper.stderr().await?;
+        let stdout = reaper.stdout().await?;
+        let stderr = reaper.stderr().await?;
 
-        Ok(())
+        tokio::spawn(async move {
+            let rx = stream_process_output(stdout, stderr);
+
+            if let Err(err) = handle_download(&game_info, rx).await {
+                log::error!("Download failed: {}", err);
+                // Send "install failed" signal
+                signals::notify_install_failed(app_id, err.to_string()).await;
+                return Err(PluginError::DownloadFailed);
+            }
+
+            // Send "install_completed" signal
+            signals::notify_install_completed("ok".to_string()).await;
+
+            Ok(())
+        });
+        Ok(rc)
     }
 
     /// Imports a game into legendary
@@ -437,4 +485,183 @@ impl Legendary {
 
         Ok(download_size)
     }
+}
+
+/// Handles the download thread when download is in progress
+async fn handle_download(
+    game_info: &LegendaryGameInfo,
+    mut rx: Receiver<OutputLine>,
+) -> EmptyResult {
+    let app_id = game_info.game.app_name.clone();
+    info!(
+        "Starting new thread to read output from epic download app session for app:{}",
+        app_id
+    );
+
+    let mut current_progress: f32 = -1.0;
+    let mut no_internet_error_count: Option<Instant> = None;
+
+    let mut current_verify_progress: f32 = 0.0;
+    let mut current_verify_progress_with_large_file: f32 = 0.0;
+
+    let mut total_size = bytes_to_megabytes(game_info.get_download_size());
+    let mut remaining_size = total_size;
+
+    // If we receive this warning in the logs 2 times without any progress, we should retry download
+    let mut empty_queue_warning_count = 0;
+
+    while let Some(line) = rx.recv().await {
+        let line = match line {
+            OutputLine::Stdout(s) | OutputLine::Stderr(s) => s,
+        };
+
+        log::debug!("Epicdownloader: {}", line);
+
+        if let Ok(size) = parse_size(&line, DownloadSizeType::Disk) {
+            let disk_size = bytes_to_megabytes(game_info.get_disk_size());
+
+            if size > disk_size {
+                // installed_app.install_config.disk_size = megabytes_to_bytes(size);
+                log::info!("Supposed to do something here?");
+            }
+        }
+
+        if let Ok(size) = parse_size(&line, DownloadSizeType::Download) {
+            remaining_size = size;
+
+            if remaining_size > total_size {
+                total_size = remaining_size;
+            }
+        }
+
+        // Only trigger queue errors if we are downloading the game properly
+        if line.contains("WARNING: Writer queue empty!") && no_internet_error_count.is_none() {
+            empty_queue_warning_count += 1;
+
+            if empty_queue_warning_count >= EPIC_MAX_WRITER_QUEUE_EMPTY_ERROR_COUNT {
+                log::error!(
+                    "Legendary not progressing download for app_id:{}, retrying",
+                    app_id
+                );
+                break;
+            }
+        }
+
+        if line.contains("No write access to") {
+            return Err(line.into());
+        }
+
+        // Happens when verifying game files with repair functionality
+        if let Some(captures) = VERIFICATION_PROGRESS_REGEX.captures(&line) {
+            let Some(percentage) = captures.get(1).and_then(|x| x.as_str().parse::<f32>().ok())
+            else {
+                continue;
+            };
+
+            if percentage != current_verify_progress {
+                current_verify_progress = percentage;
+
+                notify_install_progressed(
+                    app_id.clone(),
+                    DownloadStage::Verifying as u8,
+                    0,
+                    0,
+                    current_verify_progress as f64,
+                )
+                .await;
+            }
+
+            continue;
+        }
+
+        // The above output stops and this starts when it starts verifying a large file, so we just add the current_progress to this percentage
+        if let Some(captures) = VERIFYING_LARGE_FILE_REGEX.captures(&line) {
+            let Some(percentage) = captures.get(1).and_then(|x| x.as_str().parse::<f32>().ok())
+            else {
+                continue;
+            };
+            let Some(file_size_mb) = captures.get(2) else {
+                continue;
+            };
+            let file_size_bytes = megabytes_to_bytes(file_size_mb.as_str().parse().unwrap_or(0.0));
+            let disk_size = 0; //Need to get the total disk size here
+            let weight = if disk_size == 0 {
+                0.0
+            } else {
+                file_size_bytes as f32 / disk_size as f32
+            };
+
+            let progress = current_verify_progress + (weight * percentage);
+            if progress != current_verify_progress_with_large_file {
+                current_verify_progress_with_large_file = progress;
+                notify_install_progressed(
+                    app_id.clone(),
+                    DownloadStage::Verifying as u8,
+                    0,
+                    0,
+                    progress as f64,
+                )
+                .await;
+            }
+            continue;
+        }
+
+        let capture = regex_capture(DOWNLOADED_SIZE_REGEX.to_owned(), line.clone());
+        let capture = capture.split(' ').last().unwrap_or_default();
+        let downloaded_size = capture.parse::<f32>();
+        let capture = regex_capture(WRITTEN_SIZE_REGEX.to_owned(), line.clone());
+        let capture = capture.split(' ').last().unwrap_or_default();
+        let written_size = capture.parse::<f32>().map_or(0, megabytes_to_bytes);
+
+        if let Ok(downloaded_size) = downloaded_size {
+            no_internet_error_count = None;
+
+            let mut progress =
+                (((total_size - remaining_size) + downloaded_size) / total_size).min(1.0) * 100.0;
+            progress = progress.clamp(0.0, 100.0);
+
+            if progress != current_progress {
+                empty_queue_warning_count = 0;
+                current_progress = progress;
+
+                notify_install_progressed(
+                    app_id.clone(),
+                    DownloadStage::Downloading as u8,
+                    written_size,
+                    total_size as u64,
+                    progress as f64,
+                )
+                .await;
+
+                continue;
+            }
+        }
+
+        if SUCCESS_REGEX.is_match(&line) {
+            log::info!("Finished downloading the app for app {}", app_id);
+            notify_install_progressed(app_id, DownloadStage::Downloading as u8, 0, 0, 100.0).await;
+            break;
+        }
+
+        if NOT_AUTHED_ERROR_REGEX.is_match(&line) {
+            log::error!("User not authorized when downloading app {}", app_id);
+            return Err(PluginError::NotLoggedIn.into());
+        }
+
+        if NO_INTERNET_ERROR_REGEX.is_match(&line) {
+            match no_internet_error_count {
+                None => no_internet_error_count = Some(Instant::now()),
+                Some(instant) => {
+                    // Give it 10 seconds to reconnect to the network
+                    // Also wait for legendary to potentially restart the workers
+                    if instant.elapsed() > Duration::from_secs(10) {
+                        log::error!("No internet when downloading app for app_id:{}", app_id);
+                        return Err(PluginError::NetworkRequired.into());
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
 }

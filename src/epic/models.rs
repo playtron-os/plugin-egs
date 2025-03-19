@@ -322,19 +322,6 @@ pub enum ProtonVerb {
     DestroyPrefix,
 }
 
-/// Stage of the download
-pub enum DownloadStage {
-    None,
-    Error,
-    Dependencies,
-    Preallocating,
-    Downloading,
-    Verifying,
-    Installing,
-    Done,
-    UpdatePending,
-}
-
 #[derive(PartialEq)]
 pub enum DownloadSizeType {
     Disk,

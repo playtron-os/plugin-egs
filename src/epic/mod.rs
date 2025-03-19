@@ -4,3 +4,4 @@ pub mod legendary;
 pub mod models;
 pub mod overlay;
 pub mod service;
+pub mod signals;

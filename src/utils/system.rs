@@ -101,3 +101,11 @@ pub async fn move_folder_with_progress(
 pub fn get_base_path(_disk: &str) -> String {
     "/media/data/playtron/".to_string()
 }
+
+pub fn bytes_to_megabytes(bytes: u64) -> f32 {
+    bytes as f32 / (1024.0 * 1024.0)
+}
+
+pub fn megabytes_to_bytes(megabytes: f32) -> u64 {
+    (megabytes * 1024.0 * 1024.0) as u64
+}

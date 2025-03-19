@@ -6,7 +6,9 @@ use zbus_macros::interface;
 
 use crate::constants::{LIBRARY_PROVIDER_ID, LIBRARY_PROVIDER_NAME};
 use crate::epic::service::EpicService;
-use crate::types::app::{AppEulaInformation, InstalledApp, LaunchOption, ProviderItem};
+use crate::types::app::{
+    AppEulaInformation, DownloadStage, InstalledApp, LaunchOption, ProviderItem,
+};
 
 pub struct LibraryProvider {
     pub service: EpicService,
@@ -46,6 +48,17 @@ impl LibraryProvider {
         requires_internet_connection: bool,
     ) -> zbus::Result<()>;
 
+    /// Install Progressed signal
+    #[zbus(signal)]
+    async fn install_progressed(
+        emitter: &SignalEmitter<'_>,
+        app_id: String,
+        stage: DownloadStage,
+        downloaded_bytes: u64,
+        total_download_size: u64,
+        progress: f64,
+    ) -> zbus::Result<()>;
+
     /// Emitted when a game’s installation step is completed.
     #[zbus(signal)]
     async fn install_completed(emitter: &SignalEmitter<'_>, value: String) -> zbus::Result<()>;
@@ -81,7 +94,7 @@ impl LibraryProvider {
         new_items: &[ProviderItem],
     ) -> zbus::Result<()>;
 
-    /// TODO Undocumented
+    /// Emitted when a game has finished being moved to a new folder
     #[zbus(signal)]
     async fn move_item_completed(
         emitter: &SignalEmitter<'_>,
@@ -89,7 +102,7 @@ impl LibraryProvider {
         install_folder: String,
     ) -> zbus::Result<()>;
 
-    /// TODO Undocumented
+    /// Fired when a game has failed to be moved to a new folder
     #[zbus(signal)]
     async fn move_item_failed(
         emitter: &SignalEmitter<'_>,
@@ -225,7 +238,6 @@ impl LibraryProvider {
         disk: &str,
         options: HashMap<&str, &str>,
     ) -> fdo::Result<u32> {
-        log::info!("install {} on {}", app_id, disk);
         self.service.install(app_id, disk, options).await
     }
 
