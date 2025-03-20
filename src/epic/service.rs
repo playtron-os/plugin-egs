@@ -143,12 +143,13 @@ impl EpicService {
     pub async fn install(
         &self,
         app_id: &str,
-        disk: &str,
+        disk: String,
+        base_path: String,
         options: HashMap<&str, &str>,
     ) -> fdo::Result<u32> {
         match self
             .legendary
-            .install(app_id.to_string(), disk.to_string(), options)
+            .install(app_id.to_string(), disk, base_path, options)
             .await
         {
             Ok(_) => Ok(1),
@@ -228,6 +229,24 @@ impl EpicService {
         match self.legendary.get_eulas(app_id).await {
             Ok(eulas) => Ok(eulas),
             Err(e) => Err(fdo::Error::Failed(e.to_string())),
+        }
+    }
+
+    pub async fn get_save_path_patterns(
+        &self,
+        app_id: String,
+        platform: String,
+    ) -> fdo::Result<Vec<String>> {
+        let game_info = match self.legendary.info(&app_id).await {
+            Ok(game_info) => game_info,
+            Err(e) => return Err(fdo::Error::Failed(e.to_string())),
+        };
+        if platform == "mac" && game_info.game.cloud_save_folder_mac.is_some() {
+            Ok([game_info.game.cloud_save_folder_mac.unwrap()].to_vec())
+        } else if game_info.game.cloud_save_folder.is_some() {
+            Ok([game_info.game.cloud_save_folder.unwrap()].to_vec())
+        } else {
+            Ok(Vec::new())
         }
     }
 }

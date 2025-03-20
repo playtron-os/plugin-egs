@@ -26,9 +26,7 @@ use crate::{
         child::{command_sync, stream_process_output, OutputLine},
         reaper::ReaperProcess,
         strings::regex_capture,
-        system::{
-            bytes_to_megabytes, get_base_path, megabytes_to_bytes, move_folder_with_progress,
-        },
+        system::{bytes_to_megabytes, megabytes_to_bytes, move_folder_with_progress},
     },
 };
 use chrono::NaiveDateTime;
@@ -267,24 +265,26 @@ impl Legendary {
     pub async fn install(
         &self,
         app_id: String,
-        disk: String,
+        _disk: String,
+        base_path: String,
         options: HashMap<&str, &str>,
     ) -> ResultWithError<Receiver<AppDownloadProgress>> {
         let (_, rc) = tokio::sync::mpsc::channel::<AppDownloadProgress>(128);
-        let base_path = get_base_path(&disk);
-        let game_folder = app_id.to_string();
+
         let game_info: LegendaryGameInfo = self.info(&app_id).await.unwrap();
         let mut arguments: Vec<String> = vec![
             "install".to_owned(),
             app_id.to_string(),
             "--yes".to_owned(),
             "--with-dlcs".to_owned(),
-            "--base-path".to_owned(),
-            base_path,
-            "--game-folder".to_owned(),
-            game_folder,
             "--skip-sdl".to_owned(),
         ];
+
+        // base_path is optional in the context of updates
+        if !base_path.is_empty() {
+            arguments.push("--base-path".to_owned());
+            arguments.push(base_path);
+        };
         let custom_shared_memory = std::env::var("CUSTOM_LEGENDARY_INSTALL_SHARED_MEMORY");
         if let Ok(custom_shared_memory) = custom_shared_memory {
             let numeric_value = custom_shared_memory.parse::<u64>();

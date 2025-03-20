@@ -1,4 +1,4 @@
-use std::{collections::HashMap, vec};
+use std::collections::HashMap;
 
 use zbus::fdo;
 use zbus::object_server::SignalEmitter;
@@ -234,9 +234,12 @@ impl LibraryProvider {
         &self,
         app_id: &str,
         disk: &str,
+        base_path: &str,
         options: HashMap<&str, &str>,
     ) -> fdo::Result<u32> {
-        self.service.install(app_id, disk, options).await
+        self.service
+            .install(app_id, disk.to_string(), base_path.to_string(), options)
+            .await
     }
 
     async fn import(&self, app_id: &str, install_folder: &str) -> fdo::Result<()> {
@@ -277,8 +280,11 @@ impl LibraryProvider {
     ///   /one/playtron/EpicGames/LegendaryClient0 \
     ///   one.playtron.plugin.LibraryProvider \
     ///   Update "s" "460950"
-    fn update(&self, app_id: String) -> fdo::Result<()> {
-        log::info!("update app {}", app_id);
+    async fn update(&self, app_id: String) -> fdo::Result<()> {
+        let _ = self
+            .service
+            .install(&app_id, "".to_string(), "".to_string(), HashMap::new())
+            .await;
         Ok(())
     }
 
@@ -290,23 +296,22 @@ impl LibraryProvider {
     ///   /one/playtron/EpicGames/LegendaryClient0 \
     ///   one.playtron.plugin.LibraryProvider \
     ///   GetSavePathPatterns ss 730 windows
-    fn get_save_path_patterns(&self, app_id: String, platform: String) -> fdo::Result<Vec<String>> {
-        log::info!("get_save_path_patterns for {} on {}", app_id, platform);
-        Ok(vec![])
-    }
-
-    fn sync_installed_apps(&self) {
-        log::info!("sync installed apps");
+    async fn get_save_path_patterns(
+        &self,
+        app_id: String,
+        platform: String,
+    ) -> fdo::Result<Vec<String>> {
+        self.service.get_save_path_patterns(app_id, platform).await
     }
 
     fn pause_install(&self) {
         log::info!("pause install");
     }
 
-    fn post_launch_hook(&self, using_offline_mode: bool) -> Vec<String> {
+    fn post_launch_hook(&self, using_offline_mode: bool) -> fdo::Result<Vec<String>> {
         log::info!("post launch hook");
         dbg!(using_offline_mode);
-        vec![]
+        Err(fdo::Error::Failed("Unimplemented".to_string()))
     }
 
     /// Trigger discovery of provider items. Should emit LibraryUpdated signal if new items are discovered.
@@ -320,5 +325,9 @@ impl LibraryProvider {
     fn refresh(&self) -> fdo::Result<()> {
         log::info!("refresh");
         Err(fdo::Error::Failed("Unimplemented".to_string()))
+    }
+
+    async fn sync_installed_apps(&self) {
+        log::info!("sync installed apps");
     }
 }
