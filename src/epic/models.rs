@@ -259,6 +259,7 @@ impl LegendaryGameInfo {
             latest_version: self.game.version.clone(),
             update_pending: false,
             os: "windows".to_string(),
+            disabled_dlc: vec![],
         }
     }
 }

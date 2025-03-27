@@ -1,7 +1,9 @@
+use crate::utils::date::optional_date_serializer;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 use strum_macros::{Display, EnumString};
-use zbus::zvariant::{OwnedValue, Type, Value};
+use zbus::zvariant::{OwnedValue, SerializeDict, Type, Value};
 
 #[derive(Serialize, Deserialize, Debug, Type, Clone)]
 pub struct EulaEntry {
@@ -25,6 +27,7 @@ pub struct InstalledApp {
     pub latest_version: String,
     pub update_pending: bool,
     pub os: String,
+    pub disabled_dlc: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Type)]
@@ -267,4 +270,101 @@ pub struct AppDownloadProgress {
     pub error_code: Option<u16>,
     /// Last Modified header value from download request
     pub last_modified: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone, Default)]
+pub struct PlaytronProvider {
+    pub provider: String,
+    #[serde(alias = "providerAppId")]
+    pub provider_app_id: String,
+    #[serde(alias = "storeId")]
+    pub store_id: String,
+    #[serde(alias = "parentStoreId")]
+    pub parent_store_id: Option<String>,
+    #[serde(alias = "lastImportedTimestamp", with = "optional_date_serializer")]
+    pub last_imported_timestamp: Option<DateTime<Utc>>,
+    #[serde(alias = "knownDlcStoreIds")]
+    pub known_dlc_store_ids: Vec<String>,
+    #[serde(alias = "namespace")]
+    pub namespace: String,
+    #[serde(alias = "productStoreLink", default)]
+    pub product_store_link: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone, Default)]
+pub struct PlaytronTag {
+    pub tag: String,
+    #[serde(alias = "type")]
+    pub tag_type: String,
+    pub source: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone, Default)]
+pub struct ItemMetadata {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub providers: Vec<PlaytronProvider>,
+    #[serde(default)]
+    pub slug: String,
+    #[serde(default)]
+    pub summary: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub tags: Vec<PlaytronTag>,
+    #[serde(default)]
+    pub images: Vec<PlaytronImage>,
+    #[serde(default)]
+    pub publishers: Vec<String>,
+    #[serde(default)]
+    pub developers: Vec<String>,
+    #[serde(alias = "type")]
+    pub app_type: PlaytronAppType,
+}
+
+#[derive(Deserialize, Serialize, Debug, Default, Clone)]
+pub struct RegistryEntry {
+    pub language: Option<String>,
+    pub group: String,
+    pub key: String,
+    pub value: String,
+}
+
+#[derive(Deserialize, Serialize, Debug, Default, Clone)]
+pub struct Registry {
+    pub dword: Option<Vec<RegistryEntry>>,
+    pub string: Option<Vec<RegistryEntry>>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Default, Clone)]
+pub struct RequirementOSConfig {
+    pub is_64_bit_windows: Option<bool>,
+    pub os_type: Option<String>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Default, Clone)]
+pub struct RunProcessParams {
+    pub name: String,
+    pub has_run_key: Option<String>,
+    pub process: String,
+    pub command: Option<String>,
+    pub no_clean_up: Option<bool>,
+    pub minimum_has_run_value: Option<String>,
+    pub requirement_os: RequirementOSConfig,
+}
+
+#[derive(Deserialize, Serialize, Debug, Default, Clone)]
+pub struct InstallScript {
+    pub path: String,
+    pub registry: Registry,
+    pub run_process: Vec<RunProcessParams>,
+}
+
+#[derive(SerializeDict, Type, Deserialize)]
+#[zvariant(signature = "a{sv}")]
+pub struct InstallOption {
+    pub language: Option<String>,
+    pub os: Option<String>,
+    pub verify: Option<bool>,
 }

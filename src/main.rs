@@ -2,10 +2,10 @@ use std::env;
 use std::future::pending;
 mod auth;
 mod constants;
-mod epic;
 mod plugin;
 mod types;
 mod utils;
+mod epic;
 
 use epic::service::EpicService;
 
@@ -20,6 +20,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .init();
 
     log::info!("Starting Playtron Plugin");
+
     let mut epic_service = EpicService::new();
     epic_service.initialize().await?;
     build_connection(epic_service).await?;

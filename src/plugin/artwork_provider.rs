@@ -1,4 +1,4 @@
-use zbus::interface;
+use zbus_macros::interface;
 
 use crate::types::app::ArtworkMetadata;
 

@@ -15,44 +15,44 @@ pub enum PluginError {
     AppNotInstalled,
     #[error("one.playtron.Error.InvalidAppId")]
     InvalidAppId,
-    #[error("one.playtrong.Error.NotLoggedIn")]
+    #[error("one.playtron.Error.NotLoggedIn")]
     NotLoggedIn,
-    #[error("one.playtrong.Error.MissingDirectory")]
+    #[error("one.playtron.Error.MissingDirectory")]
     MissingDirectory,
-    #[error("one.playtrong.Error.InvalidPassword")]
+    #[error("one.playtron.Error.InvalidPassword")]
     InvalidPassword,
-    #[error("one.playtrong.Error.AuthenticationError")]
+    #[error("one.playtron.Error.AuthenticationError")]
     AuthenticationError,
-    #[error("one.playtrong.Error.TfaTimedOut")]
+    #[error("one.playtron.Error.TfaTimedOut")]
     TfaTimedOut,
-    #[error("one.playtrong.Error.RateLimitExceeded")]
+    #[error("one.playtron.Error.RateLimitExceeded")]
     RateLimitExceeded,
-    #[error("one.playtrong.Error.AppUpdateRequired")]
+    #[error("one.playtron.Error.AppUpdateRequired")]
     AppUpdateRequired,
-    #[error("one.playtrong.Error.DependencyUpdateRequired")]
+    #[error("one.playtron.Error.DependencyUpdateRequired")]
     DependencyUpdateRequired,
-    #[error("one.playtrong.Error.Timeout")]
+    #[error("one.playtron.Error.Timeout")]
     Timeout,
-    #[error("one.playtrong.Error.DependencyError")]
+    #[error("one.playtron.Error.DependencyError")]
     DependencyError,
-    #[error("one.playtrong.Error.PreLaunchError")]
+    #[error("one.playtron.Error.PreLaunchError")]
     PreLaunchError,
-    #[error("one.playtrong.Error.CloudConflict")]
+    #[error("one.playtron.Error.CloudConflict")]
     CloudConflict,
-    #[error("one.playtrong.Error.CloudQuota")]
+    #[error("one.playtron.Error.CloudQuota")]
     CloudQuota,
-    #[error("one.playtrong.Error.CloudFileDownload")]
+    #[error("one.playtron.Error.CloudFileDownload")]
     CloudFileDownload,
-    #[error("one.playtrong.Error.CloudFileUpload")]
+    #[error("one.playtron.Error.CloudFileUpload")]
     CloudFileUpload,
-    #[error("one.playtrong.Error.AppNotOwned")]
+    #[error("one.playtron.Error.AppNotOwned")]
     AppNotOwned,
-    #[error("one.playtrong.Error.PlayingBlocked")]
+    #[error("one.playtron.Error.PlayingBlocked")]
     PlayingBlocked,
-    #[error("one.playtrong.Error.NotEnoughSpace")]
+    #[error("one.playtron.Error.NotEnoughSpace")]
     NotEnoughSpace,
-    #[error("one.playtrong.Error.Permission")]
+    #[error("one.playtron.Error.Permission")]
     Permission,
-    #[error("one.playtrong.Error.NetworkRequired")]
+    #[error("one.playtron.Error.NetworkRequired")]
     NetworkRequired,
 }

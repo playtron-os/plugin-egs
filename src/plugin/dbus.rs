@@ -11,7 +11,7 @@ use zbus::{
 };
 
 lazy_static::lazy_static! {
-    static ref CONNECTION: Mutex<Option<Connection>> =
+    pub static ref CONNECTION: Mutex<Option<Connection>> =
         Mutex::new(None);
 }
 
@@ -23,29 +23,31 @@ pub async fn build_connection(service: EpicService) -> EmptyResult {
     let cryptography = auth::cryptography::Cryptography {
         service: service.clone(),
     };
+    let password_flow = auth::password_flow::PasswordFlow {
+        service: service.clone(),
+    };
     let portal_flow = auth::portal_flow::PortalFlow {
         service: service.clone(),
     };
     let library_provider = plugin::library_provider::LibraryProvider {
         service: service.clone(),
     };
+    let plugin_dependencies = plugin::plugin_dependencies::PluginDependencies {};
     let cloud_save_provider = plugin::cloud_save_provider::CloudSaveProvider {
         service: service.clone(),
     };
 
-    // let plugin_dependencies = plugin::plugin_dependencies::PluginDependencies {};
-    // let artwork_provider = plugin::artwork_provider::ArtworkProvider {};
     *CONNECTION.lock().await = Some(
         connection::Builder::session()?
             .name(BUS_NAME)?
             .serve_at(CLIENT_PATH, user)?
             .serve_at(CLIENT_PATH, cryptography)?
+            .serve_at(CLIENT_PATH, password_flow)?
             .serve_at(CLIENT_PATH, portal_flow)?
             .serve_at(CLIENT_PATH, plugin)?
             .serve_at(CLIENT_PATH, library_provider)?
             .serve_at(CLIENT_PATH, cloud_save_provider)?
-            //.serve_at(CLIENT_PATH, artwork_provider)?
-            //.serve_at(CLIENT_PATH, plugin_dependencies)?
+            .serve_at(CLIENT_PATH, plugin_dependencies)?
             .build()
             .await?,
     );

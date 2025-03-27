@@ -31,13 +31,13 @@ use crate::{
 };
 use chrono::NaiveDateTime;
 use futures::StreamExt;
-use std::time::Duration;
+use std::{collections::HashMap, time::Duration};
 
 use log::info;
 use parking_lot::Mutex;
 use regex::Regex;
+use std::future::Future;
 use std::process::Stdio;
-use std::{collections::HashMap, future::Future};
 
 use tokio::{fs, process::Command, sync::mpsc::Receiver, time::Instant};
 
@@ -265,9 +265,8 @@ impl Legendary {
     pub async fn install(
         &self,
         app_id: String,
-        _disk: String,
         base_path: String,
-        options: HashMap<&str, &str>,
+        options: HashMap<String, String>,
     ) -> ResultWithError<Receiver<AppDownloadProgress>> {
         let (_, rc) = tokio::sync::mpsc::channel::<AppDownloadProgress>(128);
 
@@ -296,8 +295,8 @@ impl Legendary {
             }
         }
 
-        // Check if verifying game files
-        if options.contains_key("verify") {
+        // Check if verifying game files // FIXME
+        if *options.get("verify").unwrap() == "true".to_string() {
             arguments[0] = "repair".to_owned();
             arguments.push("--repair-and-update".to_owned());
         }

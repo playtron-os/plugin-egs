@@ -5,12 +5,14 @@ use crate::epic::{
     models::LegendaryGameListInfo, signals,
 };
 
+use crate::plugin::errors::PluginError;
 use crate::types::app::{AppEulaInformation, AppType, InstalledApp, LaunchOption, ProviderItem};
 use crate::types::cloud_sync::CloudSyncOperation;
+use base64::{engine::general_purpose, Engine};
 use rand;
 use rsa::pkcs1::EncodeRsaPublicKey;
 use rsa::pkcs8::LineEnding;
-use rsa::{RsaPrivateKey, RsaPublicKey};
+use rsa::{sha2::Sha256, Oaep, RsaPrivateKey, RsaPublicKey};
 
 use std::collections::HashMap;
 use zbus::fdo;
@@ -71,6 +73,34 @@ impl EpicService {
         self.account = Some(status.account)
     }
 
+    pub async fn login(&mut self, name: String, password: String) -> Result<(), PluginError> {
+        // Decode a base64 string
+
+        let mut buffer = Vec::<u8>::new();
+        general_purpose::STANDARD
+            .decode_vec(password, &mut buffer)
+            .unwrap();
+        let padding = Oaep::new::<Sha256>();
+        let decrypted = self.rsa.decrypt(padding, &buffer).unwrap();
+        let password: String = String::from_utf8(decrypted).unwrap();
+        if name == "default" && password == "password" {
+            log::info!("Login successful");
+            Ok(())
+        } else {
+            Err(PluginError::InvalidPassword)
+        }
+    }
+
+    pub async fn logout(&mut self) -> fdo::Result<()> {
+        match self.legendary.logout().await {
+            Ok(_) => {
+                self.set_account().await;
+                Ok(())
+            }
+            Err(e) => Err(fdo::Error::Failed(e.to_string())),
+        }
+    }
+
     pub async fn get_installed_apps(&self) -> fdo::Result<Vec<InstalledApp>> {
         match self.legendary.get_installed_apps().await {
             Ok(legendary_installed) => {
@@ -86,6 +116,7 @@ impl EpicService {
                         latest_version: installed_app.version.clone(),
                         update_pending: installed_app.needs_verification,
                         os: installed_app.platform.clone(),
+                        disabled_dlc: vec![],
                     })
                     .collect();
                 Ok(installed_apps)
@@ -143,13 +174,13 @@ impl EpicService {
     pub async fn install(
         &self,
         app_id: &str,
-        disk: String,
         base_path: String,
-        options: HashMap<&str, &str>,
+        _options: HashMap<String, zbus::zvariant::Value<'_>>,
     ) -> fdo::Result<u32> {
+        // TODO: Convert HashMap to InstallOption
         match self
             .legendary
-            .install(app_id.to_string(), disk, base_path, options)
+            .install(app_id.to_string(), base_path, HashMap::new())
             .await
         {
             Ok(_) => Ok(1),
@@ -157,8 +188,8 @@ impl EpicService {
         }
     }
 
-    pub async fn get_launch_options(&self, app_id: String) -> fdo::Result<Vec<LaunchOption>> {
-        match self.legendary.get_launch_options(app_id).await {
+    pub async fn get_launch_options(&self, app_id: &str) -> fdo::Result<Vec<LaunchOption>> {
+        match self.legendary.get_launch_options(app_id.to_string()).await {
             Ok(launch_options) => Ok(launch_options),
             Err(e) => Err(fdo::Error::Failed(e.to_string())),
         }
@@ -190,16 +221,6 @@ impl EpicService {
                 notify_move_item_failed(app_id, e.to_string()).await;
                 Err(fdo::Error::Failed(e.to_string()))
             }
-        }
-    }
-
-    pub async fn logout(&mut self) -> fdo::Result<()> {
-        match self.legendary.logout().await {
-            Ok(_) => {
-                self.set_account().await;
-                Ok(())
-            }
-            Err(e) => Err(fdo::Error::Failed(e.to_string())),
         }
     }
 
@@ -248,5 +269,21 @@ impl EpicService {
         } else {
             Ok(Vec::new())
         }
+    }
+    pub async fn pre_launch_hook(
+        &self,
+        app_id: &str,
+        using_offline_mode: bool,
+    ) -> fdo::Result<Vec<String>> {
+        log::info!(
+            "Pre launch hook for {} (offline mode: {})",
+            app_id,
+            using_offline_mode
+        );
+        Ok(vec![])
+    }
+    pub fn get_item_metadata(&self, app_id: &str) -> fdo::Result<String> {
+        log::info!("Getting metadata for {}", app_id);
+        Ok("".to_string())
     }
 }
