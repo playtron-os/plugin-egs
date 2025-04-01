@@ -484,7 +484,7 @@ impl ReaperProcess {
     }
 
     fn _drop(&mut self) {
-        log::debug!(
+        log::trace!(
             "Dropping reaper with pid:{} and identifier:{:?}",
             self.pid,
             self.identifier
@@ -497,7 +497,7 @@ impl ReaperProcess {
                 tx.send(ReaperCommand::Terminate).await.unwrap_or_default();
             }
 
-            log::debug!(
+            log::trace!(
                 "Dropped reaper with pid:{} and identifier:{:?}",
                 pid,
                 identifier

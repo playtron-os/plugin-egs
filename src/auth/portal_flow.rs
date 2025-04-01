@@ -1,6 +1,6 @@
 use crate::constants::{ALLOWED_ROUTES, CLIENT_ID};
 use crate::epic::service::EpicService;
-use zbus::interface;
+use zbus::{fdo, interface};
 pub struct PortalFlow {
     pub service: EpicService,
 }
@@ -55,7 +55,12 @@ impl PortalFlow {
     /// A beginning of the id corresponding to the input field corresponding to
     /// two factor codes. It is optional can can be left empty
     #[zbus(property)]
-    async fn two_factor_input_id_prefix(&self) -> &str {
-        ""
+    async fn popup_url_suffix(&self) -> fdo::Result<String> {
+        Ok("".to_string())
+    }
+
+    #[zbus(property)]
+    fn show_library_sync_view(&self) -> fdo::Result<bool> {
+        Ok(true)
     }
 }

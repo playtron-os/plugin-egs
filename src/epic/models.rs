@@ -294,7 +294,7 @@ pub struct LegendaryInstalledGameResponse {
     pub requires_ot: bool,
     pub save_path: Option<String>,
     pub title: String,
-    pub uninstaller: Option<String>,
+    pub uninstaller: Option<HashMap<String, String>>,
     pub version: String,
 }
 

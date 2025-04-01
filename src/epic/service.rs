@@ -1,21 +1,19 @@
 use crate::constants::LIBRARY_PROVIDER_ID;
-use crate::epic::signals::notify_move_item_failed;
 use crate::epic::{
     common::require_legendary, config::LegendaryConfig, legendary::Legendary,
-    models::LegendaryGameListInfo, signals,
+    models::LegendaryGameListInfo,
 };
 
-use crate::plugin::errors::PluginError;
-use crate::types::app::{AppEulaInformation, AppType, InstalledApp, LaunchOption, ProviderItem};
+use crate::types::app::{
+    AppEulaInformation, AppType, InstalledApp, ItemMetadata, LaunchOption, PlaytronAppType,
+    PlaytronImage, PlaytronProvider, ProviderItem,
+};
 use crate::types::cloud_sync::CloudSyncOperation;
-use base64::{engine::general_purpose, Engine};
-use rand;
-use rsa::pkcs1::EncodeRsaPublicKey;
-use rsa::pkcs8::LineEnding;
-use rsa::{sha2::Sha256, Oaep, RsaPrivateKey, RsaPublicKey};
 
 use std::collections::HashMap;
 use zbus::fdo;
+
+use super::common::read_metadata_from_cache;
 
 fn legendary_app_to_provider_item(legendary_app: &LegendaryGameListInfo) -> ProviderItem {
     ProviderItem {
@@ -29,27 +27,23 @@ fn legendary_app_to_provider_item(legendary_app: &LegendaryGameListInfo) -> Prov
 pub struct EpicService {
     config: LegendaryConfig,
     legendary: Legendary,
-    rsa: RsaPrivateKey,
     pub account: Option<String>,
 }
 
 impl EpicService {
     pub fn new() -> Self {
-        let mut rng = rand::thread_rng();
         let config = LegendaryConfig::new();
-        let rsa = RsaPrivateKey::new(&mut rng, 2048).expect("failed to generate new key");
         Self {
             config: config.clone(),
-            rsa,
             legendary: Legendary::new(Some(config)),
             account: None,
         }
     }
 
-    pub async fn auth(&mut self, authorization_code: Option<String>) -> Result<(), String> {
+    pub async fn auth(&mut self, authorization_code: Option<String>) -> fdo::Result<()> {
         let account = self.legendary.auth(authorization_code).await;
         if account.is_err() {
-            return Err("Failed to authenticate".to_string());
+            return Err(fdo::Error::Failed("Failed to authenticate".to_string()));
         }
         self.set_account().await;
         Ok(())
@@ -63,32 +57,9 @@ impl EpicService {
         result
     }
 
-    pub fn get_public_key(&self) -> String {
-        let public_key = RsaPublicKey::from(&self.rsa);
-        public_key.to_pkcs1_pem(LineEnding::LF).unwrap()
-    }
-
     pub async fn set_account(&mut self) {
         let status = self.legendary.status().await.unwrap();
         self.account = Some(status.account)
-    }
-
-    pub async fn login(&mut self, name: String, password: String) -> Result<(), PluginError> {
-        // Decode a base64 string
-
-        let mut buffer = Vec::<u8>::new();
-        general_purpose::STANDARD
-            .decode_vec(password, &mut buffer)
-            .unwrap();
-        let padding = Oaep::new::<Sha256>();
-        let decrypted = self.rsa.decrypt(padding, &buffer).unwrap();
-        let password: String = String::from_utf8(decrypted).unwrap();
-        if name == "default" && password == "password" {
-            log::info!("Login successful");
-            Ok(())
-        } else {
-            Err(PluginError::InvalidPassword)
-        }
     }
 
     pub async fn logout(&mut self) -> fdo::Result<()> {
@@ -198,7 +169,14 @@ impl EpicService {
     pub async fn get_post_install_steps(&self, app_id: String) -> fdo::Result<String> {
         let post_install_steps = self.legendary.get_prerequisites(&app_id).await;
         match post_install_steps {
-            Ok(post_install_steps) => Ok(serde_json::to_string(&post_install_steps).unwrap()),
+            Ok(post_install_steps) => {
+                log::info!(
+                    "Post install steps for {} are:\n{:?}",
+                    &app_id,
+                    post_install_steps
+                );
+                Ok("[]".to_string())
+            }
             Err(e) => Err(fdo::Error::Failed(e.to_string())),
         }
     }
@@ -213,14 +191,11 @@ impl EpicService {
     pub async fn move_item(&self, app_id: String, disk: String) -> fdo::Result<()> {
         match self
             .legendary
-            .move_app_to_drive(app_id.as_str(), &disk, &signals::notify_move_progress)
+            .move_app_to_drive(app_id.as_str(), &disk)
             .await
         {
             Ok(_) => Ok(()),
-            Err(e) => {
-                notify_move_item_failed(app_id, e.to_string()).await;
-                Err(fdo::Error::Failed(e.to_string()))
-            }
+            Err(e) => Err(fdo::Error::Failed(e.to_string())),
         }
     }
 
@@ -282,8 +257,69 @@ impl EpicService {
         );
         Ok(vec![])
     }
-    pub fn get_item_metadata(&self, app_id: &str) -> fdo::Result<String> {
-        log::info!("Getting metadata for {}", app_id);
-        Ok("".to_string())
+    pub async fn get_item_metadata(&self, app_id: &str) -> String {
+        let game_info: LegendaryGameListInfo = read_metadata_from_cache(app_id).await.unwrap();
+        let namespace = game_info.metadata.namespace.to_owned();
+        let images: Vec<PlaytronImage> = game_info
+            .metadata
+            .key_images
+            .into_iter()
+            .map(|epic_image| {
+                let image_type = match epic_image.image_type.as_str() {
+                    "DieselGameBox" => "OfferImageWide",
+                    "DieselGameBoxTall" => "OfferImageTall",
+                    _ => &epic_image.image_type,
+                }
+                .to_owned();
+                PlaytronImage {
+                    url: epic_image.url,
+                    image_type,
+                    source: "EpicGames".to_string(),
+                    alt: epic_image.alt,
+                }
+            })
+            .collect();
+
+        let mut app_type: Option<PlaytronAppType> = None;
+        for category in game_info.metadata.categories {
+            match category.path.as_str() {
+                "games" => {
+                    app_type = Some(PlaytronAppType::Game);
+                    break;
+                }
+                "addons" => {
+                    app_type = Some(PlaytronAppType::Dlc);
+                    break;
+                }
+                _ => (),
+            }
+        }
+
+        let item_meta = ItemMetadata {
+            id: app_id.to_owned(),
+            name: game_info.app_title.to_owned(),
+            slug: app_id.to_owned(),
+            app_type: app_type.unwrap_or(PlaytronAppType::None),
+            providers: vec![PlaytronProvider {
+                namespace,
+                provider: LIBRARY_PROVIDER_ID.to_string(),
+                provider_app_id: app_id.to_owned(),
+                store_id: game_info.metadata.id.to_owned(),
+                product_store_link: "https://store.epicgames.com".to_owned(),
+                parent_store_id: None,
+                last_imported_timestamp: None,
+                known_dlc_store_ids: vec![],
+            }],
+            developers: vec![game_info.metadata.developer.to_owned()],
+            publishers: vec![],
+            description: "".to_string(),
+            summary: "".to_string(),
+            tags: vec![],
+            images,
+        };
+        let res = serde_json::to_string(&item_meta).unwrap();
+        log::info!("{:?}", item_meta);
+        log::info!("{:?}", res);
+        res
     }
 }

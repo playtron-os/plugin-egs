@@ -11,14 +11,10 @@ use crate::{
             DownloadSizeType, EpicStatusResponse, LegendaryGameInfo, LegendaryGameListInfo,
             LegendaryInstalledGameResponse,
         },
-        signals::{self, notify_install_progressed},
     },
     plugin::errors::PluginError,
     types::{
-        app::{
-            AppDownloadProgress, AppEulaInformation, DownloadStage, LaunchOption, LaunchType,
-            Platform,
-        },
+        app::{AppDownloadProgress, AppEulaInformation, LaunchOption, LaunchType, Platform},
         cloud_sync::CloudSyncOperation,
         results::{EmptyResult, ResultWithError},
     },
@@ -36,7 +32,6 @@ use std::{collections::HashMap, time::Duration};
 use log::info;
 use parking_lot::Mutex;
 use regex::Regex;
-use std::future::Future;
 use std::process::Stdio;
 
 use tokio::{fs, process::Command, sync::mpsc::Receiver, time::Instant};
@@ -296,7 +291,7 @@ impl Legendary {
         }
 
         // Check if verifying game files // FIXME
-        if *options.get("verify").unwrap() == "true".to_string() {
+        if options.contains_key("verify") {
             arguments[0] = "repair".to_owned();
             arguments.push("--repair-and-update".to_owned());
         }
@@ -318,14 +313,10 @@ impl Legendary {
 
             if let Err(err) = handle_download(&game_info, rx).await {
                 log::error!("Download failed: {}", err);
-                // Send "install failed" signal
-                signals::notify_install_failed(app_id, err.to_string()).await;
+                // TODO Send "install failed" signal
                 return Err(PluginError::DownloadFailed);
             }
-
-            // Send "install_completed" signal
-            signals::notify_install_completed("ok".to_string()).await;
-
+            // TODO Send "install_completed" signal
             Ok(())
         });
         Ok(rc)
@@ -370,8 +361,7 @@ impl Legendary {
             );
             return Err("Error while listing Epic apps".into());
         }
-
-        //log::info!("{}", stdout);
+        // log::info!("{}", stdout);
         //Parse JSON output
         let installed_apps: Vec<LegendaryInstalledGameResponse> = serde_json::from_str(&stdout)?;
         Ok(installed_apps)
@@ -420,16 +410,7 @@ impl Legendary {
     }
 
     /// Move an app to another drive
-    pub async fn move_app_to_drive<F, Fut>(
-        &self,
-        app_id: &str,
-        drive_name: &str,
-        on_progress: F,
-    ) -> EmptyResult
-    where
-        F: FnOnce(String, u8) -> Fut + Copy + Clone,
-        Fut: Future,
-    {
+    pub async fn move_app_to_drive(&self, app_id: &str, drive_name: &str) -> EmptyResult {
         if let Some(game_info) = self.get_game_info(app_id).await? {
             let current_folder_name = game_info.install_path.split('/').last().unwrap();
             let new_game_folder_path = get_app_install_dir(drive_name, current_folder_name);
@@ -450,7 +431,8 @@ impl Legendary {
 
             while let Some(progress) = progress.next().await {
                 let progress = progress?;
-                on_progress(app_id.to_string(), progress).await;
+                // TODO emit install_progressed
+                log::info!("Move progress: {:?}", progress);
             }
             execute_legendary_handle_auth_raw(
                 self.config.legendary_command.clone(),
@@ -593,15 +575,12 @@ async fn handle_download(
 
             if percentage != current_verify_progress {
                 current_verify_progress = percentage;
-
-                notify_install_progressed(
-                    app_id.clone(),
-                    DownloadStage::Verifying as u8,
-                    0,
-                    0,
-                    current_verify_progress as f64,
-                )
-                .await;
+                log::info!(
+                    "Legendary verification progress for app_id:{}, current: {:.1}%",
+                    app_id,
+                    current_verify_progress
+                );
+                // TODO emit install_progressed with Verify stage
             }
 
             continue;
@@ -627,14 +606,12 @@ async fn handle_download(
             let progress = current_verify_progress + (weight * percentage);
             if progress != current_verify_progress_with_large_file {
                 current_verify_progress_with_large_file = progress;
-                notify_install_progressed(
-                    app_id.clone(),
-                    DownloadStage::Verifying as u8,
-                    0,
-                    0,
-                    progress as f64,
-                )
-                .await;
+                log::info!(
+                    "Legendary verification progress for app_id:{}, current: {:.1}%",
+                    app_id,
+                    current_verify_progress_with_large_file
+                );
+                // TODO emit install_progressed with Verify stage
             }
             continue;
         }
@@ -642,9 +619,9 @@ async fn handle_download(
         let capture = regex_capture(DOWNLOADED_SIZE_REGEX.to_owned(), line.clone());
         let capture = capture.split(' ').last().unwrap_or_default();
         let downloaded_size = capture.parse::<f32>();
-        let capture = regex_capture(WRITTEN_SIZE_REGEX.to_owned(), line.clone());
-        let capture = capture.split(' ').last().unwrap_or_default();
-        let written_size = capture.parse::<f32>().map_or(0, megabytes_to_bytes);
+        // let capture = regex_capture(WRITTEN_SIZE_REGEX.to_owned(), line.clone());
+        // let capture = capture.split(' ').last().unwrap_or_default();
+        // let written_size = capture.parse::<f32>().map_or(0, megabytes_to_bytes);
 
         if let Ok(downloaded_size) = downloaded_size {
             no_internet_error_count = None;
@@ -657,22 +634,14 @@ async fn handle_download(
                 empty_queue_warning_count = 0;
                 current_progress = progress;
 
-                notify_install_progressed(
-                    app_id.clone(),
-                    DownloadStage::Downloading as u8,
-                    written_size,
-                    total_size as u64,
-                    progress as f64,
-                )
-                .await;
-
+                log::info!("Verify {}: {}%", app_id, current_progress);
+                // TODO emit install_progressed
                 continue;
             }
         }
 
         if SUCCESS_REGEX.is_match(&line) {
             log::info!("Finished downloading the app for app {}", app_id);
-            notify_install_progressed(app_id, DownloadStage::Downloading as u8, 0, 0, 100.0).await;
             break;
         }
 

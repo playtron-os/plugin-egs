@@ -5,6 +5,8 @@ use zbus::object_server::SignalEmitter;
 use crate::epic::service::EpicService;
 
 use crate::types::cloud_sync::CloudPath;
+use crate::types::cloud_sync::CloudSyncFailed;
+use crate::types::cloud_sync::CloudSyncProgress;
 pub struct CloudSaveProvider {
     pub service: EpicService,
 }
@@ -15,21 +17,14 @@ impl CloudSaveProvider {
     #[zbus(signal)]
     async fn cloud_save_sync_failed(
         emitter: &SignalEmitter<'_>,
-        app_id: String,
-        error: String,
-        local: u64,
-        remote: u64,
-        quota_usage: u64,
-        quota: u64,
+        failure: CloudSyncFailed,
     ) -> zbus::Result<()>;
 
     /// Emitted when the sync is progressing
     #[zbus(signal)]
     async fn cloud_save_sync_progressed(
         emitter: &SignalEmitter<'_>,
-        app_id: String,
-        progress: f32,
-        sync_state: u32,
+        progress: CloudSyncProgress,
     ) -> zbus::Result<()>;
 
     /// Start downloading the save data for the given provider app id using the given path patterns.
@@ -42,16 +37,14 @@ impl CloudSaveProvider {
     ///   CloudSaveDownload "ssba(sssbas)" "460950" 1 "/path/to/saves"
     async fn cloud_save_download(
         &mut self,
-        app_id: String,
-        platform: String,
+        app_id: &str,
+        platform: &str,
         force: bool,
         paths: Vec<CloudPath>,
     ) -> fdo::Result<()> {
         log::info!("Downloading cloud saves for {:?} ({:?})", app_id, platform);
         log::info!("Paths {:?}", paths);
-        self.service
-            .cloud_save_download(app_id.as_str(), force)
-            .await
+        self.service.cloud_save_download(app_id, force).await
     }
 
     /// Start uploading the save data for the given provider app
@@ -65,13 +58,13 @@ impl CloudSaveProvider {
     ///   CloudSaveUpload "ssba(sssbas)" "460950" 1 "/path/to/saves"
     async fn cloud_save_upload(
         &mut self,
-        app_id: String,
-        platform: String,
+        app_id: &str,
+        platform: &str,
         force: bool,
         paths: Vec<CloudPath>,
     ) -> fdo::Result<()> {
         log::info!("Uploading cloud saves for {:?} ({:?})", app_id, platform);
         log::info!("Paths {:?}", paths);
-        self.service.cloud_save_upload(app_id.as_str(), force).await
+        self.service.cloud_save_upload(app_id, force).await
     }
 }

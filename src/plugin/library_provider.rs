@@ -3,6 +3,7 @@ use crate::epic::service::EpicService;
 use crate::types::app::{
     AppEulaInformation, DownloadStage, InstalledApp, LaunchOption, ProviderItem,
 };
+use crate::types::results::EmptyResult;
 use std::collections::HashMap;
 use tokio::time::Duration;
 use zbus::fdo;
@@ -164,7 +165,7 @@ impl LibraryProvider {
     ///   one.playtron.plugin.LibraryProvider \
     ///   GetInstalledApps
     async fn get_installed_apps(&self) -> fdo::Result<Vec<InstalledApp>> {
-        log::info!("get_installed_apps");
+        log::info!("Getting installed apps");
         match self.service.get_installed_apps().await {
             Ok(apps) => Ok(apps),
             Err(err) => Err(fdo::Error::Failed(err.to_string())),
@@ -234,7 +235,8 @@ impl LibraryProvider {
     }
 
     async fn get_item_metadata(&self, app_id: &str) -> fdo::Result<String> {
-        self.service.get_item_metadata(app_id)
+        log::info!("Getting item metadata for {}", app_id);
+        Ok(self.service.get_item_metadata(app_id).await)
     }
 
     /// Start installing the app with the given provider app id to the given
@@ -257,46 +259,17 @@ impl LibraryProvider {
         options: HashMap<String, zbus::zvariant::Value<'_>>,
         #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
     ) -> fdo::Result<i32> {
+        log::info!("INSTALL: {} {:?} TO {}", app_id, options, disk);
+        let disk = "/media/data/playtron/apps/egs/";
         self.service
-            .install(app_id, disk.to_string(), options)
+            .install(app_id, disk.to_string(), options.clone())
             .await?;
-        let version = "1.1";
-        let install_directory = format!("/media/data/playtron/apps/baseplugin/{}/", app_id);
-        let total_download_size = 10000;
+        if options.contains_key("verify") {
+            log::info!("Verifying game");
+        } else if _handle_download(emitter, app_id).await.is_err() {
+            return Err(fdo::Error::Failed("Failed handling download".to_string()));
+        };
 
-        LibraryProviderSignals::install_started(
-            &emitter,
-            app_id.to_string(),
-            version.to_string(),
-            install_directory.to_string(),
-            total_download_size,
-            false,
-        )
-        .await?;
-
-        let app_id: String = app_id.to_string();
-        let emitter = emitter.into_owned();
-
-        tokio::spawn(async move {
-            for i in 1..101 {
-                LibraryProviderSignals::install_progressed(
-                    &emitter.clone(),
-                    app_id.clone(),
-                    DownloadStage::Downloading,
-                    total_download_size / 2,
-                    total_download_size,
-                    i.into(),
-                )
-                .await
-                .unwrap();
-                log::info!("Install Progress: {}", i);
-                tokio::time::sleep(Duration::from_millis(100)).await;
-            }
-            LibraryProviderSignals::install_completed(&emitter.clone(), app_id.clone())
-                .await
-                .unwrap();
-        });
-        log::info!("Returning from  install method");
         Ok(1)
     }
 
@@ -395,6 +368,46 @@ impl LibraryProvider {
     }
 
     async fn import(&self, app_id: &str, install_folder: &str) -> fdo::Result<()> {
+        log::info!("import");
         self.service.import(app_id, install_folder).await
     }
+}
+
+async fn _handle_download(emitter: SignalEmitter<'_>, app_id: &str) -> EmptyResult {
+    let version = "1.1";
+    let install_directory = format!("/media/data/playtron/apps/baseplugin/{}/", app_id);
+    let total_download_size = 10000;
+
+    let app_id: String = app_id.to_string();
+
+    LibraryProviderSignals::install_started(
+        &emitter,
+        app_id.to_string(),
+        version.to_string(),
+        install_directory.to_string(),
+        total_download_size,
+        false,
+    )
+    .await?;
+    let emitter = emitter.into_owned();
+    tokio::spawn(async move {
+        for i in 1..101 {
+            LibraryProviderSignals::install_progressed(
+                &emitter.clone(),
+                app_id.clone(),
+                DownloadStage::Downloading,
+                total_download_size / 2,
+                total_download_size,
+                i.into(),
+            )
+            .await
+            .unwrap();
+            log::info!("Install Progress: {}", i);
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        LibraryProviderSignals::install_completed(&emitter.clone(), app_id.clone())
+            .await
+            .unwrap();
+    });
+    Ok(())
 }
