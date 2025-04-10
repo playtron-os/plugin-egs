@@ -262,8 +262,6 @@ where
 
     let mut stdout_lines = stdout.lines();
     while let Ok(Some(line)) = stdout_lines.next_line().await {
-        // let line = line.as_str();
-
         log::debug!("{} stdout: {}", cmd, line.substring(0, 10000));
 
         output += "\n";
@@ -285,9 +283,8 @@ where
     }
 
     let err_output = err_output.lock();
-    let err = err_output.trim().to_owned();
 
-    Ok((output.trim().to_owned(), err))
+    Ok((output.trim().to_owned(), err_output.trim().to_owned()))
 }
 
 /// Run sync OS command to sync cached file system changes

@@ -315,3 +315,9 @@ pub enum DownloadSizeType {
     Disk,
     Download,
 }
+
+#[derive(Serialize, Deserialize)]
+pub struct LegendaryUplayStatus {
+    pub activated: Vec<LegendaryGameListInstalledInfo>,
+    pub redeemable: Vec<LegendaryGameListInstalledInfo>,
+}

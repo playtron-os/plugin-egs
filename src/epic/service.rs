@@ -4,14 +4,20 @@ use crate::epic::{
     models::LegendaryGameListInfo,
 };
 
+use crate::plugin::library_provider::LibraryProviderSignals;
 use crate::types::app::{
-    AppEulaInformation, AppType, InstalledApp, ItemMetadata, LaunchOption, PlaytronAppType,
-    PlaytronImage, PlaytronProvider, ProviderItem,
+    AppEulaInformation, AppType, InstallOption, InstalledApp, ItemMetadata, LaunchOption,
+    PlaytronAppType, PlaytronImage, PlaytronProvider, ProviderItem,
 };
 use crate::types::cloud_sync::CloudSyncOperation;
-
+use crate::types::results::ResultWithError;
+use crate::utils::system::move_folder_with_progress;
+use futures::StreamExt;
 use std::collections::HashMap;
+use std::path::Path;
+use tokio::fs;
 use zbus::fdo;
+use zbus::object_server::SignalEmitter;
 
 use super::common::read_metadata_from_cache;
 
@@ -146,12 +152,32 @@ impl EpicService {
         &self,
         app_id: &str,
         base_path: String,
-        _options: HashMap<String, zbus::zvariant::Value<'_>>,
+        options: HashMap<String, zbus::zvariant::Value<'_>>,
     ) -> fdo::Result<u32> {
-        // TODO: Convert HashMap to InstallOption
+        let install_options = InstallOption {
+            language: options
+                .get("language")
+                .unwrap()
+                .clone()
+                .downcast::<String>()
+                .ok(),
+            os: options
+                .get("language")
+                .unwrap()
+                .clone()
+                .downcast::<String>()
+                .ok(),
+            verify: options
+                .get("verify")
+                .unwrap()
+                .clone()
+                .downcast::<bool>()
+                .ok(),
+        };
+
         match self
             .legendary
-            .install(app_id.to_string(), base_path, HashMap::new())
+            .install(app_id.to_string(), base_path, install_options)
             .await
         {
             Ok(_) => Ok(1),
@@ -188,15 +214,52 @@ impl EpicService {
         }
     }
 
-    pub async fn move_item(&self, app_id: String, disk: String) -> fdo::Result<()> {
-        match self
-            .legendary
-            .move_app_to_drive(app_id.as_str(), &disk)
-            .await
-        {
-            Ok(_) => Ok(()),
-            Err(e) => Err(fdo::Error::Failed(e.to_string())),
+    pub async fn move_item(
+        &self,
+        app_id: String,
+        base_path: String,
+        emitter: &SignalEmitter<'_>,
+    ) -> ResultWithError<String> {
+        let game_info = match self.legendary.get_game_info(app_id.as_str()).await {
+            Ok(Some(game_info)) => game_info,
+            Ok(None) => return Err("Game not installed".into()),
+            Err(e) => return Err(format!("Get game info failed: {}", e).into()),
+        };
+
+        let from_path = game_info.install_path;
+        let folder_name = from_path.split('/').last().unwrap();
+        let path_buf = Path::new(&base_path).join(folder_name);
+        let dest_path = path_buf.to_str().unwrap();
+        log::info!("Moving from {} to {}", from_path, dest_path);
+
+        // use util to move game folder since legendary move doesn't support moving to a different drive
+        fs::remove_dir_all(&dest_path).await.unwrap_or_default();
+        let mut progress = move_folder_with_progress(&from_path, dest_path).await;
+        while let Some(progress) = progress.next().await {
+            match progress {
+                Ok(progress) => {
+                    LibraryProviderSignals::move_item_progressed(
+                        &emitter.clone(),
+                        app_id.clone(),
+                        progress.into(),
+                    )
+                    .await?;
+                }
+                Err(e) => {
+                    LibraryProviderSignals::move_item_failed(
+                        &emitter.clone(),
+                        app_id.clone(),
+                        e.to_string(),
+                    )
+                    .await?;
+                    return Err(e);
+                }
+            }
         }
+        self.legendary
+            .move_app_to_drive(app_id.as_str(), dest_path)
+            .await?;
+        Ok(dest_path.to_string())
     }
 
     pub async fn cloud_save_download(&self, app_id: &str, force: bool) -> fdo::Result<()> {
@@ -245,6 +308,7 @@ impl EpicService {
             Ok(Vec::new())
         }
     }
+
     pub async fn pre_launch_hook(
         &self,
         app_id: &str,
@@ -257,6 +321,7 @@ impl EpicService {
         );
         Ok(vec![])
     }
+
     pub async fn get_item_metadata(&self, app_id: &str) -> String {
         let game_info: LegendaryGameListInfo = read_metadata_from_cache(app_id).await.unwrap();
         let namespace = game_info.metadata.namespace.to_owned();
@@ -317,9 +382,6 @@ impl EpicService {
             tags: vec![],
             images,
         };
-        let res = serde_json::to_string(&item_meta).unwrap();
-        log::info!("{:?}", item_meta);
-        log::info!("{:?}", res);
-        res
+        serde_json::to_string(&item_meta).unwrap()
     }
 }

@@ -1,6 +1,5 @@
 //! This is a common module that contains common epic apps related functions
 
-use convert_case::{Case, Casing};
 use lazy_static::lazy_static;
 use regex::Regex;
 use serde::de::DeserializeOwned;
@@ -47,19 +46,6 @@ pub async fn require_legendary(legendary_command: &str) -> Result<(), PluginErro
     }
 
     Ok(())
-}
-
-/// Gets the installation directory for a epic app
-pub fn get_app_install_dir(install_root: &str, name: &str) -> String {
-    let mut install_path = install_root.to_string();
-    install_path.push('/');
-    // Remove spaces from name because Legendary also removes them
-    install_path.push_str(
-        name.to_case(Case::Pascal)
-            .replace([' ', '\'', ':', '"', '!'], "")
-            .as_str(),
-    );
-    install_path
 }
 
 pub fn check_invalid_legendary_response(line: &str) -> Result<(), PluginError> {

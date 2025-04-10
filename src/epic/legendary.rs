@@ -3,9 +3,8 @@ use crate::{
     constants::LIBRARY_PROVIDER_ID,
     epic::{
         common::{
-            check_invalid_legendary_response, execute_legendary_handle_auth_json,
-            get_app_install_dir, parse_size, require_legendary,
-            EPIC_MAX_WRITER_QUEUE_EMPTY_ERROR_COUNT,
+            check_invalid_legendary_response, execute_legendary_handle_auth_json, parse_size,
+            require_legendary, EPIC_MAX_WRITER_QUEUE_EMPTY_ERROR_COUNT,
         },
         models::{
             DownloadSizeType, EpicStatusResponse, LegendaryGameInfo, LegendaryGameListInfo,
@@ -14,7 +13,10 @@ use crate::{
     },
     plugin::errors::PluginError,
     types::{
-        app::{AppDownloadProgress, AppEulaInformation, LaunchOption, LaunchType, Platform},
+        app::{
+            AppDownloadProgress, AppEulaInformation, InstallOption, LaunchOption, LaunchType,
+            Platform,
+        },
         cloud_sync::CloudSyncOperation,
         results::{EmptyResult, ResultWithError},
     },
@@ -22,24 +24,21 @@ use crate::{
         child::{command_sync, stream_process_output, OutputLine},
         reaper::ReaperProcess,
         strings::regex_capture,
-        system::{bytes_to_megabytes, megabytes_to_bytes, move_folder_with_progress},
+        system::{bytes_to_megabytes, megabytes_to_bytes},
     },
 };
 use chrono::NaiveDateTime;
-use futures::StreamExt;
-use std::{collections::HashMap, time::Duration};
-
 use log::info;
 use parking_lot::Mutex;
 use regex::Regex;
 use std::process::Stdio;
-
-use tokio::{fs, process::Command, sync::mpsc::Receiver, time::Instant};
+use std::time::Duration;
+use tokio::{process::Command, sync::mpsc::Receiver, time::Instant};
 
 use super::{
     common::execute_legendary_handle_auth_raw,
     config::LegendaryConfig,
-    models::{LegendaryEula, LegendaryGameManifestPrerequisites},
+    models::{LegendaryEula, LegendaryGameManifestPrerequisites, LegendaryUplayStatus},
 };
 
 pub fn get_wine_prefix_path(app_id: &str) -> ResultWithError<String> {
@@ -261,7 +260,7 @@ impl Legendary {
         &self,
         app_id: String,
         base_path: String,
-        options: HashMap<String, String>,
+        options: InstallOption,
     ) -> ResultWithError<Receiver<AppDownloadProgress>> {
         let (_, rc) = tokio::sync::mpsc::channel::<AppDownloadProgress>(128);
 
@@ -291,7 +290,7 @@ impl Legendary {
         }
 
         // Check if verifying game files // FIXME
-        if options.contains_key("verify") {
+        if options.verify == Some(true) {
             arguments[0] = "repair".to_owned();
             arguments.push("--repair-and-update".to_owned());
         }
@@ -307,6 +306,8 @@ impl Legendary {
 
         let stdout = reaper.stdout().await?;
         let stderr = reaper.stderr().await?;
+        // Set child for session
+        info!("Reaper initialized");
 
         tokio::spawn(async move {
             let rx = stream_process_output(stdout, stderr);
@@ -410,39 +411,13 @@ impl Legendary {
     }
 
     /// Move an app to another drive
-    pub async fn move_app_to_drive(&self, app_id: &str, drive_name: &str) -> EmptyResult {
-        if let Some(game_info) = self.get_game_info(app_id).await? {
-            let current_folder_name = game_info.install_path.split('/').last().unwrap();
-            let new_game_folder_path = get_app_install_dir(drive_name, current_folder_name);
-
-            log::info!(
-                "current_folder_name: {}, new_game_folder_path: {}",
-                current_folder_name,
-                new_game_folder_path
-            );
-
-            // use util to move game folder since legendary move doesn't support moving to a different drive
-            fs::remove_dir_all(&new_game_folder_path)
-                .await
-                .unwrap_or_default();
-
-            let mut progress =
-                move_folder_with_progress(&game_info.install_path, &new_game_folder_path).await;
-
-            while let Some(progress) = progress.next().await {
-                let progress = progress?;
-                // TODO emit install_progressed
-                log::info!("Move progress: {:?}", progress);
-            }
-            execute_legendary_handle_auth_raw(
-                self.config.legendary_command.clone(),
-                ["move", app_id, &new_game_folder_path, "--skip-move"],
-            )
-            .await?;
-            Ok(())
-        } else {
-            Err("Game not installed".into())
-        }
+    pub async fn move_app_to_drive(&self, app_id: &str, dest_path: &str) -> EmptyResult {
+        execute_legendary_handle_auth_raw(
+            self.config.legendary_command.clone(),
+            ["move", app_id, dest_path, "--skip-move"],
+        )
+        .await?;
+        Ok(())
     }
 
     // Returns only unaccepted EULAs fetched from Epic API
@@ -500,6 +475,35 @@ impl Legendary {
 
         Ok(download_size)
     }
+
+    #[allow(dead_code)]
+    /// Gets a summary of activated games on Ubisoft as long as the account is linked
+    /// This allows us to run actual activation when it's necessary
+    pub async fn uplay_link_status(&self) -> ResultWithError<LegendaryUplayStatus> {
+        let (stdout, stderr) = execute_legendary_handle_auth_raw(
+            self.config.legendary_command.clone(),
+            ["activate", "--uplay", "--summary", "--json"],
+        )
+        .await?;
+
+        if stderr.contains("No linked ubisoft account found!") {
+            return Err("Ubisoft Connect account not linked with Epic Games".into());
+        }
+        let link_summary = serde_json::from_str(&stdout)?;
+        Ok(link_summary)
+    }
+
+    #[allow(dead_code)]
+    /// Activates Ubisoft games on conntected Ubisoft account
+    /// This lets Uplay start the game properly
+    pub async fn uplay_activate(&self) -> EmptyResult {
+        execute_legendary_handle_auth_raw(
+            self.config.legendary_command.clone(),
+            ["activate", "--uplay", "-y"],
+        )
+        .await?;
+        Ok(())
+    }
 }
 
 /// Handles the download thread when download is in progress
@@ -537,7 +541,7 @@ async fn handle_download(
 
             if size > disk_size {
                 // installed_app.install_config.disk_size = megabytes_to_bytes(size);
-                log::info!("Supposed to do something here?");
+                // Emit download progress
             }
         }
 

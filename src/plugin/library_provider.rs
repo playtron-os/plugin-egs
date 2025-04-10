@@ -29,6 +29,11 @@ impl LibraryProvider {
         LIBRARY_PROVIDER_ID
     }
 
+    #[zbus(property)]
+    async fn install_target(&self) -> &str {
+        "folder"
+    }
+
     /// Emitted when a installed game has a new version available to update.
     #[zbus(signal)]
     pub async fn app_new_version_found(
@@ -255,14 +260,13 @@ impl LibraryProvider {
     async fn install(
         &self,
         app_id: &str,
-        disk: &str,
+        base_path: &str,
         options: HashMap<String, zbus::zvariant::Value<'_>>,
         #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
     ) -> fdo::Result<i32> {
-        log::info!("INSTALL: {} {:?} TO {}", app_id, options, disk);
-        let disk = "/media/data/playtron/apps/egs/";
+        log::info!("INSTALL: {} {:?} TO {}", app_id, options, base_path);
         self.service
-            .install(app_id, disk.to_string(), options.clone())
+            .install(app_id, base_path.to_string(), options.clone())
             .await?;
         if options.contains_key("verify") {
             log::info!("Verifying game");
@@ -281,8 +285,36 @@ impl LibraryProvider {
     ///   /one/playtron/EpicGames/LegendaryClient0 \
     ///   one.playtron.plugin.LibraryProvider \
     ///   MoveItem "ss" "460950" "/dev/sda3"
-    async fn move_item(&self, app_id: String, disk: String) -> fdo::Result<()> {
-        self.service.move_item(app_id, disk).await
+    async fn move_item(
+        &self,
+        app_id: String,
+        dest_path: String,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+    ) -> fdo::Result<()> {
+        match self
+            .service
+            .move_item(app_id.clone(), dest_path, &emitter)
+            .await
+        {
+            Ok(install_folder) => {
+                LibraryProviderSignals::move_item_completed(
+                    &emitter.clone(),
+                    app_id.clone(),
+                    install_folder,
+                )
+                .await?;
+                Ok(())
+            }
+            Err(e) => {
+                LibraryProviderSignals::move_item_failed(
+                    &emitter.clone(),
+                    app_id.clone(),
+                    e.to_string(),
+                )
+                .await?;
+                Err(fdo::Error::Failed(e.to_string()))
+            }
+        }
     }
 
     /// Uninstalls the given app.
