@@ -262,8 +262,6 @@ impl Legendary {
         base_path: String,
         options: InstallOption,
     ) -> ResultWithError<Receiver<AppDownloadProgress>> {
-        let (_, rc) = tokio::sync::mpsc::channel::<AppDownloadProgress>(128);
-
         let game_info: LegendaryGameInfo = self.info(&app_id).await.unwrap();
         let mut arguments: Vec<String> = vec![
             "install".to_owned(),
@@ -320,12 +318,13 @@ impl Legendary {
             // TODO Send "install_completed" signal
             Ok(())
         });
+        let (_, rc) = tokio::sync::mpsc::channel::<AppDownloadProgress>(128);
         Ok(rc)
     }
 
     /// Imports a game into legendary
     pub async fn import(&self, app_id: &str, install_folder: &str) -> EmptyResult {
-        info!("Legendary import game called for provider_id:{}", app_id);
+        info!("Legendary import game called for app:{}", app_id);
 
         let mut reaper = ReaperProcess::new(&self.config.legendary_command);
         reaper.command.args([

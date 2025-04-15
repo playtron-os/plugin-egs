@@ -220,9 +220,8 @@ impl LibraryProvider {
         self.service.get_post_install_steps(app_id).await
     }
 
-    /// Executed after a game has launched
-    fn post_launch_hook(&self, app_id: &str) -> fdo::Result<()> {
-        log::info!("post launch hook for {}", app_id);
+    /// Post launch hook is not needed for EGS
+    fn post_launch_hook(&self, _app_id: &str) -> fdo::Result<()> {
         Ok(())
     }
 
@@ -400,7 +399,6 @@ impl LibraryProvider {
     }
 
     async fn import(&self, app_id: &str, install_folder: &str) -> fdo::Result<()> {
-        log::info!("import");
         self.service.import(app_id, install_folder).await
     }
 }

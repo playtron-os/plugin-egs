@@ -6,8 +6,9 @@ use crate::epic::{
 
 use crate::plugin::library_provider::LibraryProviderSignals;
 use crate::types::app::{
-    AppEulaInformation, AppType, InstallOption, InstalledApp, ItemMetadata, LaunchOption,
-    PlaytronAppType, PlaytronImage, PlaytronProvider, ProviderItem,
+    AppEulaInformation, AppType, InstallOption, InstallScript, InstalledApp, ItemMetadata,
+    LaunchOption, PlaytronAppType, PlaytronImage, PlaytronProvider, ProviderItem, Registry,
+    RequirementOSConfig, RunProcessParams,
 };
 use crate::types::cloud_sync::CloudSyncOperation;
 use crate::types::results::ResultWithError;
@@ -195,14 +196,33 @@ impl EpicService {
     pub async fn get_post_install_steps(&self, app_id: String) -> fdo::Result<String> {
         let post_install_steps = self.legendary.get_prerequisites(&app_id).await;
         match post_install_steps {
-            Ok(post_install_steps) => {
-                log::info!(
-                    "Post install steps for {} are:\n{:?}",
-                    &app_id,
-                    post_install_steps
-                );
-                Ok("[]".to_string())
+            Ok(Some(post_install_steps)) => {
+                let install_script: InstallScript = InstallScript {
+                    path: post_install_steps.get_prerequisite_id(),
+                    registry: Registry {
+                        dword: None,
+                        string: None,
+                    },
+                    run_process: [RunProcessParams {
+                        name: post_install_steps.get_prerequisite_id(),
+                        has_run_key: None,
+                        process: post_install_steps.path,
+                        command: Some(post_install_steps.args),
+                        no_clean_up: None,
+                        minimum_has_run_value: None,
+                        requirement_os: RequirementOSConfig {
+                            is_64_bit_windows: None,
+                            os_type: None,
+                        },
+                    }]
+                    .to_vec(),
+                };
+                Ok(
+                    serde_json::to_string::<Vec<InstallScript>>(&[install_script].to_vec())
+                        .unwrap(),
+                )
             }
+            Ok(None) => Ok("[]".to_string()),
             Err(e) => Err(fdo::Error::Failed(e.to_string())),
         }
     }

@@ -168,7 +168,6 @@ pub struct LegendaryGameManifestPrerequisites {
 }
 
 impl LegendaryGameManifestPrerequisites {
-    #[allow(dead_code)]
     pub fn get_prerequisite_id(&self) -> String {
         self.ids
             .first()
