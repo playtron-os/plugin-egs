@@ -11,7 +11,6 @@ this service. This allows swapping one service with another easilly.
 
 ## TODO
 
- * Refresh library
  * Sync installed apps
  * Pause install
- * Get install options
+ * Get install options 

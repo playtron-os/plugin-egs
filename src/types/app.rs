@@ -231,7 +231,6 @@ pub struct AppEulaInformation {
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone, Default)]
 pub enum PlaytronAppType {
     #[default]
-    None,
     Game,
     #[serde(alias = "DLC")]
     Dlc,

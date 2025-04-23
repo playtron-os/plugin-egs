@@ -155,6 +155,11 @@ impl EpicService {
         base_path: String,
         options: HashMap<String, zbus::zvariant::Value<'_>>,
     ) -> fdo::Result<u32> {
+        let verify = match options.get("verify") {
+            Some(v) => v.clone().downcast::<bool>().ok(),
+            None => Some(false),
+        };
+
         let install_options = InstallOption {
             language: options
                 .get("language")
@@ -162,18 +167,8 @@ impl EpicService {
                 .clone()
                 .downcast::<String>()
                 .ok(),
-            os: options
-                .get("language")
-                .unwrap()
-                .clone()
-                .downcast::<String>()
-                .ok(),
-            verify: options
-                .get("verify")
-                .unwrap()
-                .clone()
-                .downcast::<bool>()
-                .ok(),
+            os: options.get("os").unwrap().clone().downcast::<String>().ok(),
+            verify,
         };
 
         match self
@@ -376,7 +371,9 @@ impl EpicService {
                     app_type = Some(PlaytronAppType::Dlc);
                     break;
                 }
-                _ => (),
+                _ => {
+                    app_type = Some(PlaytronAppType::Game);
+                }
             }
         }
 
@@ -384,7 +381,7 @@ impl EpicService {
             id: app_id.to_owned(),
             name: game_info.app_title.to_owned(),
             slug: app_id.to_owned(),
-            app_type: app_type.unwrap_or(PlaytronAppType::None),
+            app_type: app_type.unwrap(),
             providers: vec![PlaytronProvider {
                 namespace,
                 provider: LIBRARY_PROVIDER_ID.to_string(),

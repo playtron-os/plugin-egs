@@ -159,9 +159,10 @@ impl LibraryProvider {
     ///   GetInstallOptions "s" "460950"
     async fn get_install_options(
         &self,
-        app_id: &str,
+        _app_id: &str,
     ) -> fdo::Result<Vec<(String, String, Vec<String>)>> {
-        log::info!("get_install_options for {}", app_id);
+        // Install options should be built from the install_tags in the manifest
+        // Those tags aren't standardized, we need to map them to known languages
         Ok(Vec::new())
     }
 
@@ -362,21 +363,8 @@ impl LibraryProvider {
         self.service.get_save_path_patterns(app_id, platform).await
     }
 
-    fn pause_install(&self) {
-        log::info!("pause install");
-    }
-
-    /// Trigger discovery of provider items. Should emit LibraryUpdated signal if new items are discovered.
-    ///
-    /// # Example
-    ///
-    /// busctl --user call one.playtron.EpicGames \
-    ///   /one/playtron/EpicGames/LegendaryClient0 \
-    ///   one.playtron.plugin.LibraryProvider \
-    ///   Refresh
-    fn refresh(&self) -> fdo::Result<()> {
-        log::info!("refresh");
-        Ok(())
+    async fn import(&self, app_id: &str, install_folder: &str) -> fdo::Result<()> {
+        self.service.import(app_id, install_folder).await
     }
 
     async fn pre_launch_hook(
@@ -389,6 +377,7 @@ impl LibraryProvider {
             .service
             .pre_launch_hook(app_id, using_offline_mode)
             .await;
+        log::info!("Launch ready");
         emitter.launch_ready(app_id).await?;
         res
     }
@@ -398,8 +387,8 @@ impl LibraryProvider {
         Ok(())
     }
 
-    async fn import(&self, app_id: &str, install_folder: &str) -> fdo::Result<()> {
-        self.service.import(app_id, install_folder).await
+    fn pause_install(&self) {
+        log::info!("pause install");
     }
 }
 
