@@ -229,18 +229,31 @@ impl Legendary {
     /// Return launch options for a game
     pub async fn get_launch_options(&self, app_id: String) -> ResultWithError<Vec<LaunchOption>> {
         let game_info = self.info(&app_id).await?;
-        let launch_options: Vec<LaunchOption> = game_info
+        let mut launch_options: Vec<LaunchOption> = Vec::new();
+        launch_options.push(LaunchOption {
+            description: "Launch".to_string(),
+            executable: game_info.manifest.launch_exe.clone(),
+            arguments: game_info.manifest.launch_command.clone(),
+            working_directory: "".to_string(),
+            environment: [].to_vec(),
+            launch_type: LaunchType::Game,
+            hardware_tags: [].to_vec(),
+        });
+
+        let _: Vec<_> = game_info
             .game
             .launch_options
             .iter()
-            .map(|launch_option| LaunchOption {
-                description: launch_option.name.clone(),
-                executable: game_info.manifest.launch_exe.clone(),
-                arguments: launch_option.parameters.clone(),
-                working_directory: "".to_string(),
-                environment: [].to_vec(),
-                launch_type: LaunchType::Game,
-                hardware_tags: [].to_vec(),
+            .map(|launch_option| {
+                launch_options.push(LaunchOption {
+                    description: launch_option.name.clone(),
+                    executable: game_info.manifest.launch_exe.clone(),
+                    arguments: launch_option.parameters.clone(),
+                    working_directory: "".to_string(),
+                    environment: [].to_vec(),
+                    launch_type: LaunchType::Game,
+                    hardware_tags: [].to_vec(),
+                })
             })
             .collect();
         Ok(launch_options)
