@@ -13,4 +13,3 @@ this service. This allows swapping one service with another easilly.
 
  * Sync installed apps
  * Pause install
- * Get install options 

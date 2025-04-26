@@ -3,9 +3,7 @@ use crate::epic::service::EpicService;
 use crate::types::app::{
     AppEulaInformation, DownloadStage, InstalledApp, LaunchOption, ProviderItem,
 };
-use crate::types::results::EmptyResult;
 use std::collections::HashMap;
-use tokio::time::Duration;
 use zbus::fdo;
 use zbus::object_server::SignalEmitter;
 use zbus_macros::interface;
@@ -264,16 +262,14 @@ impl LibraryProvider {
         options: HashMap<String, zbus::zvariant::Value<'_>>,
         #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
     ) -> fdo::Result<i32> {
-        log::info!("INSTALL: {} {:?} TO {}", app_id, options, base_path);
         self.service
-            .install(app_id, base_path.to_string(), options.clone())
+            .install(
+                app_id,
+                base_path.to_string(),
+                options.clone(),
+                emitter.clone(),
+            )
             .await?;
-        if options.contains_key("verify") {
-            log::info!("Verifying game");
-        } else if _handle_download(emitter, app_id).await.is_err() {
-            return Err(fdo::Error::Failed("Failed handling download".to_string()));
-        };
-
         Ok(1)
     }
 
@@ -339,10 +335,14 @@ impl LibraryProvider {
     ///   /one/playtron/EpicGames/LegendaryClient0 \
     ///   one.playtron.plugin.LibraryProvider \
     ///   Update "s" "460950"
-    async fn update(&self, app_id: String) -> fdo::Result<()> {
+    async fn update(
+        &self,
+        app_id: String,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+    ) -> fdo::Result<()> {
         let _ = self
             .service
-            .install(&app_id, "".to_string(), HashMap::new())
+            .install(&app_id, "".to_string(), HashMap::new(), emitter.clone())
             .await;
         Ok(())
     }
@@ -387,46 +387,7 @@ impl LibraryProvider {
         Ok(())
     }
 
-    fn pause_install(&self) {
-        log::info!("pause install");
+    async fn pause_install(&self) -> fdo::Result<()> {
+        self.service.pause_install().await
     }
-}
-
-async fn _handle_download(emitter: SignalEmitter<'_>, app_id: &str) -> EmptyResult {
-    let version = "1.1";
-    let install_directory = format!("/media/data/playtron/apps/baseplugin/{}/", app_id);
-    let total_download_size = 10000;
-
-    let app_id: String = app_id.to_string();
-
-    LibraryProviderSignals::install_started(
-        &emitter,
-        app_id.to_string(),
-        version.to_string(),
-        install_directory.to_string(),
-        total_download_size,
-        false,
-    )
-    .await?;
-    let emitter = emitter.into_owned();
-    tokio::spawn(async move {
-        for i in 1..101 {
-            LibraryProviderSignals::install_progressed(
-                &emitter.clone(),
-                app_id.clone(),
-                DownloadStage::Downloading,
-                total_download_size / 2,
-                total_download_size,
-                i.into(),
-            )
-            .await
-            .unwrap();
-            log::info!("Install Progress: {}", i);
-            tokio::time::sleep(Duration::from_millis(100)).await;
-        }
-        LibraryProviderSignals::install_completed(&emitter.clone(), app_id.clone())
-            .await
-            .unwrap();
-    });
-    Ok(())
 }

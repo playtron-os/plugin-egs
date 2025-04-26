@@ -154,6 +154,7 @@ impl EpicService {
         app_id: &str,
         base_path: String,
         options: HashMap<String, zbus::zvariant::Value<'_>>,
+        emitter: SignalEmitter<'_>,
     ) -> fdo::Result<u32> {
         let verify = match options.get("verify") {
             Some(v) => v.clone().downcast::<bool>().ok(),
@@ -173,10 +174,22 @@ impl EpicService {
 
         match self
             .legendary
-            .install(app_id.to_string(), base_path, install_options)
+            .install(
+                app_id.to_string(),
+                base_path,
+                install_options,
+                emitter.clone(),
+            )
             .await
         {
             Ok(_) => Ok(1),
+            Err(e) => Err(fdo::Error::Failed(e.to_string())),
+        }
+    }
+
+    pub async fn pause_install(&self) -> fdo::Result<()> {
+        match self.legendary.pause_download().await {
+            Ok(_) => Ok(()),
             Err(e) => Err(fdo::Error::Failed(e.to_string())),
         }
     }

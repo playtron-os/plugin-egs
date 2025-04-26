@@ -4,18 +4,18 @@ use crate::{
     epic::{
         common::{
             check_invalid_legendary_response, execute_legendary_handle_auth_json, parse_size,
-            require_legendary, EPIC_MAX_WRITER_QUEUE_EMPTY_ERROR_COUNT,
+            read_metadata_from_cache, require_legendary, EPIC_MAX_WRITER_QUEUE_EMPTY_ERROR_COUNT,
         },
         models::{
             DownloadSizeType, EpicStatusResponse, LegendaryGameInfo, LegendaryGameListInfo,
             LegendaryInstalledGameResponse,
         },
     },
-    plugin::errors::PluginError,
+    plugin::{errors::PluginError, library_provider::LibraryProviderSignals},
     types::{
         app::{
-            AppDownloadProgress, AppEulaInformation, InstallOption, LaunchOption, LaunchType,
-            Platform,
+            AppDownloadProgress, AppEulaInformation, DownloadStage, InstallOption, LaunchOption,
+            LaunchType, Platform,
         },
         cloud_sync::CloudSyncOperation,
         results::{EmptyResult, ResultWithError},
@@ -31,9 +31,11 @@ use chrono::NaiveDateTime;
 use log::info;
 use parking_lot::Mutex;
 use regex::Regex;
-use std::process::Stdio;
+use std::sync::Arc;
 use std::time::Duration;
+use std::{path::Path, process::Stdio};
 use tokio::{process::Command, sync::mpsc::Receiver, time::Instant};
+use zbus::object_server::SignalEmitter;
 
 use super::{
     common::execute_legendary_handle_auth_raw,
@@ -73,6 +75,10 @@ lazy_static::lazy_static! {
     /// Whether owned apps are being fetched
     pub static ref FETCHING_APPS: Mutex<bool> = Mutex::new(false);
     static ref SAVE_DATES_REGEX: Regex = Regex::new(r"save date: (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})").unwrap();
+}
+
+lazy_static::lazy_static! {
+    static ref INSTALL_REAPER: Arc<tokio::sync::Mutex<Vec<ReaperProcess>>> = Arc::new(tokio::sync::Mutex::new(Vec::new()));
 }
 
 #[derive(Clone)]
@@ -274,7 +280,19 @@ impl Legendary {
         app_id: String,
         base_path: String,
         options: InstallOption,
-    ) -> ResultWithError<Receiver<AppDownloadProgress>> {
+        emitter: SignalEmitter<'_>,
+    ) -> ResultWithError<()> {
+        let cached_meta = read_metadata_from_cache(&app_id).await?;
+        let asset_info = cached_meta.asset_infos.get("Windows").unwrap();
+        let version = asset_info.build_version.to_owned();
+        let folder_name = cached_meta
+            .metadata
+            .custom_attributes
+            .unwrap()
+            .folder_name
+            .unwrap()
+            .value;
+
         let game_info: LegendaryGameInfo = self.info(&app_id).await.unwrap();
         let mut arguments: Vec<String> = vec![
             "install".to_owned(),
@@ -287,8 +305,11 @@ impl Legendary {
         // base_path is optional in the context of updates
         if !base_path.is_empty() {
             arguments.push("--base-path".to_owned());
-            arguments.push(base_path);
+            arguments.push(base_path.clone());
+            arguments.push("--folder-name".to_owned());
+            arguments.push(folder_name.clone());
         };
+
         let custom_shared_memory = std::env::var("CUSTOM_LEGENDARY_INSTALL_SHARED_MEMORY");
         if let Ok(custom_shared_memory) = custom_shared_memory {
             let numeric_value = custom_shared_memory.parse::<u64>();
@@ -314,25 +335,67 @@ impl Legendary {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         reaper.execute().await?;
+        INSTALL_REAPER.lock().await.push(reaper.clone());
 
         let stdout = reaper.stdout().await?;
         let stderr = reaper.stderr().await?;
         // Set child for session
         info!("Reaper initialized");
-
+        let emitter = emitter.into_owned();
+        let install_directory = Path::new(&base_path).join(folder_name);
+        let total_download_size = game_info.get_download_size();
         tokio::spawn(async move {
+            LibraryProviderSignals::install_started(
+                &emitter,
+                app_id.clone(),
+                version,
+                install_directory.to_str().unwrap().to_owned(),
+                total_download_size,
+                false,
+            )
+            .await
+            .unwrap();
             let rx = stream_process_output(stdout, stderr);
-
+            LibraryProviderSignals::install_progressed(
+                &emitter.clone(),
+                app_id.clone(),
+                DownloadStage::Downloading,
+                total_download_size / 2,
+                total_download_size,
+                50.0,
+            )
+            .await
+            .unwrap();
             if let Err(err) = handle_download(&game_info, rx).await {
                 log::error!("Download failed: {}", err);
-                // TODO Send "install failed" signal
+                LibraryProviderSignals::install_failed(
+                    &emitter,
+                    &app_id,
+                    "Unexpected server response",
+                )
+                .await
+                .unwrap();
                 return Err(PluginError::DownloadFailed);
             }
-            // TODO Send "install_completed" signal
+            LibraryProviderSignals::install_completed(&emitter.clone(), app_id.clone())
+                .await
+                .unwrap();
             Ok(())
         });
-        let (_, rc) = tokio::sync::mpsc::channel::<AppDownloadProgress>(128);
-        Ok(rc)
+        let (_, _rc) = tokio::sync::mpsc::channel::<AppDownloadProgress>(128);
+        Ok(())
+    }
+
+    pub async fn pause_download(&self) -> ResultWithError<i32> {
+        let install_reaper = INSTALL_REAPER.lock().await;
+        if let Some(reaper) = install_reaper.first() {
+            reaper.to_owned().terminate().await?;
+        } else {
+            log::warn!("No install reaper found");
+        };
+        INSTALL_REAPER.lock().await.clear();
+        log::info!("Download paused");
+        Ok(0)
     }
 
     /// Imports a game into legendary
@@ -374,7 +437,6 @@ impl Legendary {
             );
             return Err("Error while listing Epic apps".into());
         }
-        // log::info!("{}", stdout);
         //Parse JSON output
         let installed_apps: Vec<LegendaryInstalledGameResponse> = serde_json::from_str(&stdout)?;
         Ok(installed_apps)

@@ -117,7 +117,7 @@ pub fn parse_size(line: &str, download_size_type: DownloadSizeType) -> ResultWit
     Ok(size.parse()?)
 }
 
-/// Read game metadata from Legendary's cache instead of querying Legendary itself
+/// Read game metadata from Legendary's cache
 pub async fn read_metadata_from_cache(app_id: &str) -> ResultWithError<LegendaryGameListInfo> {
     let config_home = std::env::var("XDG_CONFIG_HOME")
         .or_else(|_err| std::env::var("HOME").map(|var| format!("{var}/.config")))?;
