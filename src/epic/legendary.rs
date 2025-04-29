@@ -14,8 +14,7 @@ use crate::{
     plugin::{errors::PluginError, library_provider::LibraryProviderSignals},
     types::{
         app::{
-            AppDownloadProgress, AppEulaInformation, DownloadStage, InstallOption, LaunchOption,
-            LaunchType, Platform,
+            AppEulaInformation, DownloadStage, InstallOption, LaunchOption, LaunchType, Platform,
         },
         cloud_sync::CloudSyncOperation,
         results::{EmptyResult, ResultWithError},
@@ -35,6 +34,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::{path::Path, process::Stdio};
 use tokio::{process::Command, sync::mpsc::Receiver, time::Instant};
+use tokio_util::sync::CancellationToken;
 use zbus::object_server::SignalEmitter;
 
 use super::{
@@ -75,9 +75,7 @@ lazy_static::lazy_static! {
     /// Whether owned apps are being fetched
     pub static ref FETCHING_APPS: Mutex<bool> = Mutex::new(false);
     static ref SAVE_DATES_REGEX: Regex = Regex::new(r"save date: (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})").unwrap();
-}
-
-lazy_static::lazy_static! {
+    static ref MOVE_CANCELLATION_TOKEN: Mutex<Option<CancellationToken>> = Mutex::default();
     static ref INSTALL_REAPER: Arc<tokio::sync::Mutex<Vec<ReaperProcess>>> = Arc::new(tokio::sync::Mutex::new(Vec::new()));
 }
 
@@ -310,16 +308,8 @@ impl Legendary {
             arguments.push(folder_name.clone());
         };
 
-        let custom_shared_memory = std::env::var("CUSTOM_LEGENDARY_INSTALL_SHARED_MEMORY");
-        if let Ok(custom_shared_memory) = custom_shared_memory {
-            let numeric_value = custom_shared_memory.parse::<u64>();
-            if let Ok(numeric_value) = numeric_value {
-                if numeric_value > 0 {
-                    arguments.push("--max-shared-memory".to_owned());
-                    arguments.push(custom_shared_memory);
-                }
-            }
-        }
+        // Use file cache instead of memory cache to lower tmpfs requirements
+        arguments.push("--read-files".to_owned());
 
         // Check if verifying game files // FIXME
         if options.verify == Some(true) {
@@ -335,10 +325,10 @@ impl Legendary {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         reaper.execute().await?;
-        INSTALL_REAPER.lock().await.push(reaper.clone());
-
         let stdout = reaper.stdout().await?;
         let stderr = reaper.stderr().await?;
+        INSTALL_REAPER.lock().await.push(reaper);
+
         // Set child for session
         info!("Reaper initialized");
         let emitter = emitter.into_owned();
@@ -356,17 +346,7 @@ impl Legendary {
             .await
             .unwrap();
             let rx = stream_process_output(stdout, stderr);
-            LibraryProviderSignals::install_progressed(
-                &emitter.clone(),
-                app_id.clone(),
-                DownloadStage::Downloading,
-                total_download_size / 2,
-                total_download_size,
-                50.0,
-            )
-            .await
-            .unwrap();
-            if let Err(err) = handle_download(&game_info, rx).await {
+            if let Err(err) = handle_download(&game_info, rx, emitter.clone()).await {
                 log::error!("Download failed: {}", err);
                 LibraryProviderSignals::install_failed(
                     &emitter,
@@ -382,7 +362,7 @@ impl Legendary {
                 .unwrap();
             Ok(())
         });
-        let (_, _rc) = tokio::sync::mpsc::channel::<AppDownloadProgress>(128);
+
         Ok(())
     }
 
@@ -537,7 +517,7 @@ impl Legendary {
 
     #[allow(dead_code)]
     /// Retrieves the download size of this owned app
-    async fn get_download_size(&self, app_id: &str) -> ResultWithError<u64> {
+    pub async fn get_download_size(&self, app_id: &str) -> ResultWithError<u64> {
         let info = self.info(app_id).await?;
         let download_size = info
             .manifest
@@ -584,6 +564,7 @@ impl Legendary {
 async fn handle_download(
     game_info: &LegendaryGameInfo,
     mut rx: Receiver<OutputLine>,
+    emitter: SignalEmitter<'_>,
 ) -> EmptyResult {
     let app_id = game_info.game.app_name.clone();
     info!(
@@ -597,6 +578,7 @@ async fn handle_download(
     let mut current_verify_progress: f32 = 0.0;
     let mut current_verify_progress_with_large_file: f32 = 0.0;
 
+    let mut disk_size = bytes_to_megabytes(game_info.get_disk_size());
     let mut total_size = bytes_to_megabytes(game_info.get_download_size());
     let mut remaining_size = total_size;
 
@@ -611,17 +593,12 @@ async fn handle_download(
         log::debug!("Epicdownloader: {}", line);
 
         if let Ok(size) = parse_size(&line, DownloadSizeType::Disk) {
-            let disk_size = bytes_to_megabytes(game_info.get_disk_size());
-
             if size > disk_size {
-                // installed_app.install_config.disk_size = megabytes_to_bytes(size);
-                // Emit download progress
+                disk_size = size;
             }
         }
-
         if let Ok(size) = parse_size(&line, DownloadSizeType::Download) {
             remaining_size = size;
-
             if remaining_size > total_size {
                 total_size = remaining_size;
             }
@@ -658,7 +635,15 @@ async fn handle_download(
                     app_id,
                     current_verify_progress
                 );
-                // TODO emit install_progressed with Verify stage
+                LibraryProviderSignals::install_progressed(
+                    &emitter,
+                    app_id.clone(),
+                    DownloadStage::Verifying,
+                    0,
+                    total_size as u64,
+                    percentage.into(),
+                )
+                .await?;
             }
 
             continue;
@@ -689,7 +674,15 @@ async fn handle_download(
                     app_id,
                     current_verify_progress_with_large_file
                 );
-                // TODO emit install_progressed with Verify stage
+                LibraryProviderSignals::install_progressed(
+                    &emitter,
+                    app_id.clone(),
+                    DownloadStage::Verifying,
+                    0,
+                    total_size as u64,
+                    current_verify_progress_with_large_file.into(),
+                )
+                .await?;
             }
             continue;
         }
@@ -697,9 +690,9 @@ async fn handle_download(
         let capture = regex_capture(DOWNLOADED_SIZE_REGEX.to_owned(), line.clone());
         let capture = capture.split(' ').last().unwrap_or_default();
         let downloaded_size = capture.parse::<f32>();
-        // let capture = regex_capture(WRITTEN_SIZE_REGEX.to_owned(), line.clone());
-        // let capture = capture.split(' ').last().unwrap_or_default();
-        // let written_size = capture.parse::<f32>().map_or(0, megabytes_to_bytes);
+        let capture = regex_capture(WRITTEN_SIZE_REGEX.to_owned(), line.clone());
+        let capture = capture.split(' ').last().unwrap_or_default();
+        let written_size = capture.parse::<f32>().map_or(0, megabytes_to_bytes);
 
         if let Ok(downloaded_size) = downloaded_size {
             no_internet_error_count = None;
@@ -713,13 +706,30 @@ async fn handle_download(
                 current_progress = progress;
 
                 log::info!("Verify {}: {}%", app_id, current_progress);
-                // TODO emit install_progressed
+                LibraryProviderSignals::install_progressed(
+                    &emitter,
+                    app_id.clone(),
+                    DownloadStage::Downloading,
+                    written_size as u64,
+                    total_size as u64,
+                    current_progress.into(),
+                )
+                .await?;
                 continue;
             }
         }
 
         if SUCCESS_REGEX.is_match(&line) {
             log::info!("Finished downloading the app for app {}", app_id);
+            LibraryProviderSignals::install_progressed(
+                &emitter,
+                app_id.clone(),
+                DownloadStage::Downloading,
+                total_size as u64,
+                total_size as u64,
+                100.0,
+            )
+            .await?;
             break;
         }
 

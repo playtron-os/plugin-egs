@@ -11,16 +11,22 @@ use crate::types::app::{
     RequirementOSConfig, RunProcessParams,
 };
 use crate::types::cloud_sync::CloudSyncOperation;
-use crate::types::results::ResultWithError;
+use crate::types::results::{EmptyResult, ResultWithError};
 use crate::utils::system::move_folder_with_progress;
 use futures::StreamExt;
+use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::path::Path;
 use tokio::fs;
+use tokio_util::sync::CancellationToken;
 use zbus::fdo;
 use zbus::object_server::SignalEmitter;
 
 use super::common::read_metadata_from_cache;
+
+lazy_static::lazy_static! {
+    static ref MOVE_CANCELLATION_TOKEN: Mutex<Option<CancellationToken>> = Mutex::default();
+}
 
 fn legendary_app_to_provider_item(legendary_app: &LegendaryGameListInfo) -> ProviderItem {
     ProviderItem {
@@ -69,14 +75,18 @@ impl EpicService {
         self.account = Some(status.account)
     }
 
-    pub async fn logout(&mut self) -> fdo::Result<()> {
+    pub async fn logout(&mut self) -> EmptyResult {
         match self.legendary.logout().await {
             Ok(_) => {
                 self.set_account().await;
                 Ok(())
             }
-            Err(e) => Err(fdo::Error::Failed(e.to_string())),
+            Err(e) => Err(e),
         }
+    }
+
+    pub async fn get_download_size(&self, app_id: &str) -> ResultWithError<u64> {
+        self.legendary.get_download_size(app_id).await
     }
 
     pub async fn get_installed_apps(&self) -> fdo::Result<Vec<InstalledApp>> {
@@ -253,6 +263,9 @@ impl EpicService {
             Ok(None) => return Err("Game not installed".into()),
             Err(e) => return Err(format!("Get game info failed: {}", e).into()),
         };
+        if MOVE_CANCELLATION_TOKEN.lock().is_some() {
+            return Err("An app move operation is already in progress".into());
+        }
 
         let from_path = game_info.install_path;
         let folder_name = from_path.split('/').last().unwrap();

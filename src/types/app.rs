@@ -254,23 +254,6 @@ pub enum DownloadStage {
     Verifying = 2,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
-/// This response is sent in the background while the download is in progress
-pub struct AppDownloadProgress {
-    /// Current stage of the donwload
-    pub stage: DownloadStage,
-    /// Progress, from 0.0 to 100.0
-    pub progress: f32,
-    /// Bytes already downloaded
-    pub bytes: u64,
-    /// Error if any happened
-    pub error: String,
-    /// Error code of the error
-    pub error_code: Option<u16>,
-    /// Last Modified header value from download request
-    pub last_modified: Option<String>,
-}
-
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone, Default)]
 pub struct PlaytronProvider {
     pub provider: String,

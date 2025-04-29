@@ -125,19 +125,26 @@ impl LibraryProvider {
         progress: f32,
     ) -> zbus::Result<()>;
 
+    /// Return download size of game
+    pub async fn get_download_size(
+        &self,
+        app_id: &str,
+        _options: HashMap<&str, zbus::zvariant::Value<'_>>,
+    ) -> fdo::Result<u64> {
+        match self.service.get_download_size(app_id).await {
+            Ok(size) => Ok(size),
+            Err(e) => Err(fdo::Error::Failed(e.to_string())),
+        }
+    }
+
     /// Retrieve EULAs for an app
     async fn get_eulas(
         &self,
         app_id: String,
-        country: String, // Unused
-        locale: String,  // Unused
+        _country: String, // Unused
+        _locale: String,  // Unused
     ) -> fdo::Result<Vec<AppEulaInformation>> {
-        log::info!(
-            "Getting eulas for app {} ({} {})",
-            &app_id,
-            &country,
-            &locale
-        );
+        log::info!("Getting eulas for app {}", &app_id);
         match self.service.get_eulas(&app_id).await {
             Ok(eulas) => Ok(eulas),
             Err(e) => Err(fdo::Error::Failed(e.to_string())),
