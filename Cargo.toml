@@ -2,6 +2,15 @@
 name = "plugin-egs"
 version = "0.1.0"
 edition = "2021"
+license = "GPL-2.0"
+description = "Epic Games plugin for Playtron GameOS"
+
+[package.metadata.generate-rpm]
+assets = [
+  { source = "target/release/plugin-egs", dest = "/usr/bin/plugin-egs", mode = "755" },
+]
+auto-req = "no"
+
 
 [dependencies]
 base64 = "0.22.1"

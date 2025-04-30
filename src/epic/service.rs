@@ -325,11 +325,12 @@ impl EpicService {
         }
     }
 
-    pub async fn get_eulas(&self, app_id: &str) -> fdo::Result<Vec<AppEulaInformation>> {
-        match self.legendary.get_eulas(app_id).await {
-            Ok(eulas) => Ok(eulas),
-            Err(e) => Err(fdo::Error::Failed(e.to_string())),
-        }
+    pub async fn get_eulas(&self, app_id: &str) -> ResultWithError<Vec<AppEulaInformation>> {
+        self.legendary.get_eulas(app_id).await
+    }
+
+    pub async fn accept_eula(&self, app_id: &str) -> EmptyResult {
+        self.legendary.accept_eula(app_id).await
     }
 
     pub async fn get_save_path_patterns(

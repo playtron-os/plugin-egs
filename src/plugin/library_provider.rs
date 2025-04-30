@@ -140,13 +140,22 @@ impl LibraryProvider {
     /// Retrieve EULAs for an app
     async fn get_eulas(
         &self,
-        app_id: String,
-        _country: String, // Unused
-        _locale: String,  // Unused
+        app_id: &str,
+        _country: &str, // Unused
+        _locale: &str,  // Unused
     ) -> fdo::Result<Vec<AppEulaInformation>> {
         log::info!("Getting eulas for app {}", &app_id);
         match self.service.get_eulas(&app_id).await {
             Ok(eulas) => Ok(eulas),
+            Err(e) => Err(fdo::Error::Failed(e.to_string())),
+        }
+    }
+
+    /// Accept EULA
+    async fn accept_eula(&self, app_id: &str, _eula_id_id: &str, _version: i32) -> fdo::Result<()> {
+        log::info!("Accepting EULA for app {}", &app_id);
+        match self.service.accept_eula(app_id).await {
+            Ok(_) => Ok(()),
             Err(e) => Err(fdo::Error::Failed(e.to_string())),
         }
     }

@@ -346,6 +346,7 @@ impl Legendary {
             .await
             .unwrap();
             let rx = stream_process_output(stdout, stderr);
+
             if let Err(err) = handle_download(&game_info, rx, emitter.clone()).await {
                 log::error!("Download failed: {}", err);
                 LibraryProviderSignals::install_failed(
@@ -502,6 +503,15 @@ impl Legendary {
             .collect();
 
         Ok(eulas)
+    }
+
+    pub async fn accept_eula(&self, app_id: &str) -> EmptyResult {
+        execute_legendary_handle_auth_raw(
+            self.config.legendary_command.clone(),
+            ["eula", app_id, "--yes"],
+        )
+        .await?;
+        Ok(())
     }
 
     /// Uninstall an app
