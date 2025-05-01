@@ -20,5 +20,7 @@ jobs:
       run: cargo build --verbose --release
     - name: Run tests
       run: cargo test --verbose
+    - name: Install Generate RPM
+      run:  cargo install cargo-generate-rpm
     - name: Generate RPM
       run: cargo generate-rpm 
