@@ -1,37 +1,31 @@
-// #![allow(dead_code)]
-use std::collections::HashMap;
-
+use crate::types::app::{PlaytronAppType, PlaytronImage};
 use serde::{Deserialize, Serialize};
-
-use crate::{
-    constants::LIBRARY_PROVIDER_ID,
-    types::app::{AppType, InstalledApp, PlaytronImage},
-};
+use std::collections::HashMap;
 
 fn default_empty_string() -> String {
     "".to_string()
 }
 
-#[derive(Serialize, Deserialize, Default, Debug)]
+#[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct LegendaryAssetInfo {
     pub app_name: String,
     pub asset_id: String,
     pub build_version: String,
 }
 
-#[derive(Serialize, Deserialize, Default, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Default, Debug, PartialEq, Clone)]
 pub struct LegendaryDlcInfo {
     pub app_name: String,
     pub title: String,
     pub install_size: u64,
 }
 
-#[derive(Serialize, Deserialize, Default, Debug)]
+#[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct LegendaryCategory {
     pub path: String,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct LegendaryCustomAttribute {
     #[serde(rename = "type")]
     pub attr_type: String,
@@ -39,7 +33,7 @@ pub struct LegendaryCustomAttribute {
     pub value: String,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct LegendaryCustomAttributes {
     #[serde(alias = "CanRunOffline")]
     pub can_run_offline: Option<LegendaryCustomAttribute>,
@@ -47,6 +41,12 @@ pub struct LegendaryCustomAttributes {
     pub folder_name: Option<LegendaryCustomAttribute>,
     #[serde(alias = "CloudSaveFolder")]
     pub cloud_save_folder: Option<LegendaryCustomAttribute>,
+    #[serde(alias = "partnerLinkType")]
+    pub partner_link_type: Option<LegendaryCustomAttribute>,
+    #[serde(alias = "ThirdPartyManagedApp")]
+    pub third_party_managed_app: Option<LegendaryCustomAttribute>,
+    #[serde(alias = "NeverUpdate")]
+    pub never_update: Option<LegendaryCustomAttribute>,
 }
 
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
@@ -88,27 +88,27 @@ pub struct LegendaryGameListInfo {
 }
 
 impl LegendaryGameListInfo {
-    #[allow(dead_code)]
-    pub fn get_app_type(&self) -> Option<AppType> {
-        let mut app_type: Option<AppType> = None;
+    pub fn get_app_type(&self) -> Option<PlaytronAppType> {
+        let mut app_type: Option<PlaytronAppType> = None;
         for category in &self.metadata.categories {
             match category.path.as_str() {
                 "games" => {
-                    app_type = Some(AppType::Game);
+                    app_type = Some(PlaytronAppType::Game);
                     break;
                 }
                 "addons" => {
-                    app_type = Some(AppType::Dlc);
+                    app_type = Some(PlaytronAppType::Dlc);
                     break;
                 }
-                _ => (),
+                _ => {
+                    app_type = Some(PlaytronAppType::Game);
+                }
             }
         }
-        let app_type = app_type.unwrap_or(AppType::Game);
+        let app_type = app_type.unwrap_or(PlaytronAppType::Game);
         Some(app_type)
     }
 
-    #[allow(dead_code)]
     pub fn get_images(&self) -> Vec<PlaytronImage> {
         self.metadata
             .key_images
@@ -124,12 +124,42 @@ impl LegendaryGameListInfo {
                 PlaytronImage {
                     url: epic_image.url,
                     image_type,
-                    source: LIBRARY_PROVIDER_ID.to_string(),
+                    source: "EpicGames".to_string(),
                     alt: epic_image.alt,
                 }
             })
             .collect()
     }
+
+    pub fn get_install_folder(&self) -> String {
+        self.metadata
+            .custom_attributes
+            .clone()
+            .unwrap()
+            .folder_name
+            .unwrap()
+            .value
+    }
+
+    pub fn get_partner_link_type(&self) -> String {
+        self.metadata
+            .custom_attributes
+            .clone()
+            .unwrap()
+            .partner_link_type
+            .unwrap()
+            .value
+    }
+
+    // pub fn get_cloud_save_folder(&self) -> String {
+    //     self.metadata
+    //         .custom_attributes
+    //         .clone()
+    //         .unwrap()
+    //         .cloud_save_folder
+    //         .as_ref()
+    //         .map_or("".to_owned(), |x| x.value.clone())
+    // }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -244,22 +274,6 @@ impl LegendaryGameInfo {
             .find(|x| x.tag.is_empty())
             .map(|x| x.size)
             .unwrap_or(self.manifest.download_size)
-    }
-
-    #[allow(dead_code)]
-    pub fn to_installed_app(&self) -> InstalledApp {
-        InstalledApp {
-            app_id: self.game.app_name.clone(),
-            installed_path: "".to_string(),
-            downloaded_bytes: 0,
-            total_download_size: self.get_download_size(),
-            disk_size: self.get_disk_size(),
-            version: self.game.version.clone(),
-            latest_version: self.game.version.clone(),
-            update_pending: false,
-            os: "windows".to_string(),
-            disabled_dlc: vec![],
-        }
     }
 }
 

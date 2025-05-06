@@ -1,5 +1,4 @@
 use regex::Regex;
-use std::ops::{Bound, RangeBounds};
 
 /// Captures a certain regex pattern in a string
 pub fn regex_capture(regex: Regex, string: String) -> String {
@@ -15,10 +14,8 @@ pub fn regex_capture(regex: Regex, string: String) -> String {
     "".to_owned()
 }
 
-#[allow(dead_code)]
 pub trait StringUtils {
     fn substring(&self, start: usize, len: usize) -> &str;
-    fn slice(&self, range: impl RangeBounds<usize>) -> &str;
 }
 
 impl StringUtils for str {
@@ -51,17 +48,5 @@ impl StringUtils for str {
             }
         }
         &self[byte_start..byte_end]
-    }
-    fn slice(&self, range: impl RangeBounds<usize>) -> &str {
-        let start = match range.start_bound() {
-            Bound::Included(bound) | Bound::Excluded(bound) => *bound,
-            Bound::Unbounded => 0,
-        };
-        let len = match range.end_bound() {
-            Bound::Included(bound) => *bound + 1,
-            Bound::Excluded(bound) => *bound,
-            Bound::Unbounded => self.len(),
-        } - start;
-        self.substring(start, len)
     }
 }

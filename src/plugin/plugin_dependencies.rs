@@ -1,12 +1,10 @@
-use crate::constants::LIBRARY_PROVIDER_ID;
-use crate::types::app::{DownloadStage, InstalledApp, ProviderItem};
+use crate::constants;
+use crate::epic::config::LegendaryConfig;
+use crate::epic::overlay;
+use crate::types::app::{AppType, DownloadStage, InstalledApp, ProviderItem};
 use zbus::fdo;
 use zbus::object_server::SignalEmitter;
 use zbus_macros::interface;
-
-use crate::constants;
-use crate::epic::overlay;
-use crate::types::app::AppType;
 
 pub struct PluginDependencies {}
 
@@ -15,18 +13,33 @@ impl PluginDependencies {
     /// Provider property
     #[zbus(property)]
     fn provider(&self) -> fdo::Result<String> {
-        Ok(LIBRARY_PROVIDER_ID.to_string())
+        Ok(constants::LIBRARY_PROVIDER_ID.to_string())
     }
 
     /// InstallAllRequiredDependencies
-    fn install_all_required_dependencies(&self) -> fdo::Result<()> {
+    async fn install_all_required_dependencies(
+        &self,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+    ) -> fdo::Result<()> {
         log::info!("Install all required dependencies");
-        Ok(())
+        let config = LegendaryConfig::new();
+        let data_dir = dirs::data_dir().unwrap();
+        let overlay_folder = data_dir.join("playtron/tools/eos-overlay");
+        match overlay::install(
+            config,
+            overlay_folder.to_str().unwrap().to_string(),
+            emitter,
+        )
+        .await
+        {
+            Ok(()) => Ok(()),
+            Err(err) => Err(fdo::Error::Failed(err.to_string())),
+        }
     }
 
-    fn get_dependency_item(&self, app_id: String) -> ProviderItem {
+    fn get_dependency_item(&self) -> ProviderItem {
         ProviderItem {
-            id: app_id,
+            id: overlay::PROVIDER_APP_ID.to_string(),
             name: overlay::NAME.to_string(),
             provider: constants::LIBRARY_PROVIDER_ID.to_string(),
             app_type: AppType::Tool,
@@ -38,7 +51,7 @@ impl PluginDependencies {
     }
 
     fn get_required_dependencies(&self) -> Vec<ProviderItem> {
-        vec![]
+        vec![self.get_dependency_item()]
     }
 
     /// InstallStarted signal

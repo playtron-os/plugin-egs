@@ -145,7 +145,7 @@ impl LibraryProvider {
         _locale: &str,  // Unused
     ) -> fdo::Result<Vec<AppEulaInformation>> {
         log::info!("Getting eulas for app {}", &app_id);
-        match self.service.get_eulas(&app_id).await {
+        match self.service.get_eulas(app_id).await {
             Ok(eulas) => Ok(eulas),
             Err(e) => Err(fdo::Error::Failed(e.to_string())),
         }
@@ -395,7 +395,10 @@ impl LibraryProvider {
             .await;
         log::info!("Launch ready");
         emitter.launch_ready(app_id).await?;
-        res
+        match res {
+            Ok(res) => Ok(res),
+            Err(e) => Err(fdo::Error::Failed(e.to_string())),
+        }
     }
 
     async fn sync_installed_apps(&self) -> fdo::Result<()> {

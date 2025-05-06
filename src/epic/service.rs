@@ -1,4 +1,5 @@
 use crate::constants::LIBRARY_PROVIDER_ID;
+use crate::epic::overlay;
 use crate::epic::{
     common::require_legendary, config::LegendaryConfig, legendary::Legendary,
     models::LegendaryGameListInfo,
@@ -16,7 +17,7 @@ use crate::utils::system::move_folder_with_progress;
 use futures::StreamExt;
 use parking_lot::Mutex;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tokio::fs;
 use tokio_util::sync::CancellationToken;
 use zbus::fdo;
@@ -86,7 +87,8 @@ impl EpicService {
     }
 
     pub async fn get_download_size(&self, app_id: &str) -> ResultWithError<u64> {
-        self.legendary.get_download_size(app_id).await
+        let game_info = self.legendary.info(app_id).await?;
+        Ok(game_info.get_download_size())
     }
 
     pub async fn get_installed_apps(&self) -> fdo::Result<Vec<InstalledApp>> {
@@ -355,71 +357,60 @@ impl EpicService {
         &self,
         app_id: &str,
         using_offline_mode: bool,
-    ) -> fdo::Result<Vec<String>> {
+    ) -> ResultWithError<Vec<String>> {
         log::info!(
             "Pre launch hook for {} (offline mode: {})",
             app_id,
             using_offline_mode
         );
-        Ok(vec![])
-    }
 
-    pub async fn get_item_metadata(&self, app_id: &str) -> String {
-        let game_info: LegendaryGameListInfo = read_metadata_from_cache(app_id).await.unwrap();
-        let namespace = game_info.metadata.namespace.to_owned();
-        let images: Vec<PlaytronImage> = game_info
-            .metadata
-            .key_images
-            .into_iter()
-            .map(|epic_image| {
-                let image_type = match epic_image.image_type.as_str() {
-                    "DieselGameBox" => "OfferImageWide",
-                    "DieselGameBoxTall" => "OfferImageTall",
-                    _ => &epic_image.image_type,
-                }
-                .to_owned();
-                PlaytronImage {
-                    url: epic_image.url,
-                    image_type,
-                    source: "EpicGames".to_string(),
-                    alt: epic_image.alt,
-                }
-            })
-            .collect();
+        let game_info = self.legendary.info(app_id).await?;
 
-        let mut app_type: Option<PlaytronAppType> = None;
-        for category in game_info.metadata.categories {
-            match category.path.as_str() {
-                "games" => {
-                    app_type = Some(PlaytronAppType::Game);
-                    break;
-                }
-                "addons" => {
-                    app_type = Some(PlaytronAppType::Dlc);
-                    break;
-                }
-                _ => {
-                    app_type = Some(PlaytronAppType::Game);
+        let install_path = game_info.install.unwrap().install_path;
+        let prefix_path = PathBuf::from(install_path)
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("wine_prefixes")
+            .join(app_id);
+        overlay::enable_for_prefix(&self.config.clone(), &prefix_path).await?;
+
+        let game_meta: LegendaryGameListInfo = read_metadata_from_cache(app_id).await.unwrap();
+        if game_meta.get_partner_link_type() == "ubisoft" {
+            let status = self.legendary.uplay_link_status().await?;
+            let is_game_redeemable = status.redeemable.iter().any(|game| game.app_name == app_id);
+            if is_game_redeemable {
+                if let Err(err) = self.legendary.uplay_activate().await {
+                    log::error!("Failed to activate game on ubisoft {err:?}");
                 }
             }
         }
+        Ok(Vec::new())
+    }
+
+    pub async fn get_item_metadata(&self, app_id: &str) -> String {
+        let game_meta: LegendaryGameListInfo = read_metadata_from_cache(app_id).await.unwrap();
+        let namespace = game_meta.metadata.namespace.to_owned();
+        let images: Vec<PlaytronImage> = game_meta.get_images();
+        let app_type: Option<PlaytronAppType> = game_meta.get_app_type();
 
         let item_meta = ItemMetadata {
             id: app_id.to_owned(),
-            name: game_info.app_title.to_owned(),
+            name: game_meta.app_title.to_owned(),
             slug: app_id.to_owned(),
             app_type: app_type.unwrap(),
             providers: vec![PlaytronProvider {
                 namespace,
                 provider: LIBRARY_PROVIDER_ID.to_string(),
                 provider_app_id: app_id.to_owned(),
-                store_id: game_info.metadata.id.to_owned(),
+                store_id: game_meta.metadata.id.to_owned(),
                 product_store_link: "https://store.epicgames.com".to_owned(),
                 parent_store_id: None,
                 last_imported_timestamp: None,
                 known_dlc_store_ids: vec![],
             }],
-            developers: vec![game_info.metadata.developer.to_owned()],
+            developers: vec![game_meta.metadata.developer.to_owned()],
             publishers: vec![],
             description: "".to_string(),
             summary: "".to_string(),

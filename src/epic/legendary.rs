@@ -283,13 +283,7 @@ impl Legendary {
         let cached_meta = read_metadata_from_cache(&app_id).await?;
         let asset_info = cached_meta.asset_infos.get("Windows").unwrap();
         let version = asset_info.build_version.to_owned();
-        let folder_name = cached_meta
-            .metadata
-            .custom_attributes
-            .unwrap()
-            .folder_name
-            .unwrap()
-            .value;
+        let folder_name = cached_meta.get_install_folder();
 
         let game_info: LegendaryGameInfo = self.info(&app_id).await.unwrap();
         let mut arguments: Vec<String> = vec![
@@ -525,22 +519,6 @@ impl Legendary {
         Ok(())
     }
 
-    #[allow(dead_code)]
-    /// Retrieves the download size of this owned app
-    pub async fn get_download_size(&self, app_id: &str) -> ResultWithError<u64> {
-        let info = self.info(app_id).await?;
-        let download_size = info
-            .manifest
-            .tag_download_size
-            .iter()
-            .find(|x| x.tag.is_empty())
-            .map(|x| x.size)
-            .unwrap_or(info.manifest.download_size);
-
-        Ok(download_size)
-    }
-
-    #[allow(dead_code)]
     /// Gets a summary of activated games on Ubisoft as long as the account is linked
     /// This allows us to run actual activation when it's necessary
     pub async fn uplay_link_status(&self) -> ResultWithError<LegendaryUplayStatus> {
@@ -557,7 +535,6 @@ impl Legendary {
         Ok(link_summary)
     }
 
-    #[allow(dead_code)]
     /// Activates Ubisoft games on conntected Ubisoft account
     /// This lets Uplay start the game properly
     pub async fn uplay_activate(&self) -> EmptyResult {

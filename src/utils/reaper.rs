@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 use std::{
     collections::HashMap,
     ffi::OsStr,
@@ -114,6 +113,7 @@ impl ReaperProcess {
         }
     }
 
+    #[allow(dead_code)]
     pub fn new_with_command(command: std::process::Command) -> Self {
         Self {
             command,
@@ -167,6 +167,7 @@ impl ReaperProcess {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn get_reaper_pid(&self) -> u32 {
         self.pid
     }
@@ -342,6 +343,7 @@ impl ReaperProcess {
             .ok_or("Error unwrapping reaper child stderr".into())
     }
 
+    #[allow(dead_code)]
     pub async fn stop(&mut self) -> EmptyResult {
         log::info!(
             "Stopping reaper for pid:{}, identifier:{:?}...",
@@ -354,6 +356,7 @@ impl ReaperProcess {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub async fn cont(&mut self) -> EmptyResult {
         log::info!(
             "Continuing reaper for pid:{}, identifier:{:?}...",
