@@ -11,8 +11,5 @@ this service. This allows swapping one service with another easilly.
 
 ## TODO
 
- * Sync installed apps
  * Handle versions (plugin/get_owned_apps.rs:118)
- * Remove dead_code
- * Enable EOS overlay
- 
+ * Games are launched with legendary on Playserve but not on plugin

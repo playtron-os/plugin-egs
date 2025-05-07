@@ -1,4 +1,12 @@
 //! This is the legendary module responsible for common functionality within legendary, such as getting status and authentication
+use super::{
+    common::execute_legendary_handle_auth_raw,
+    config::LegendaryConfig,
+    models::{
+        LegendaryEula, LegendaryGameManifestPrerequisites, LegendaryLaunchParams,
+        LegendaryUplayStatus,
+    },
+};
 use crate::{
     constants::LIBRARY_PROVIDER_ID,
     epic::{
@@ -37,12 +45,6 @@ use tokio::{process::Command, sync::mpsc::Receiver, time::Instant};
 use tokio_util::sync::CancellationToken;
 use zbus::object_server::SignalEmitter;
 
-use super::{
-    common::execute_legendary_handle_auth_raw,
-    config::LegendaryConfig,
-    models::{LegendaryEula, LegendaryGameManifestPrerequisites, LegendaryUplayStatus},
-};
-
 pub fn get_wine_prefix_path(app_id: &str) -> ResultWithError<String> {
     let prefix_path = format!("/test/{:?}", app_id.to_owned());
     Ok(prefix_path.to_string())
@@ -71,12 +73,17 @@ lazy_static::lazy_static! {
         Regex::new(r"Max retries exceeded with url").unwrap();
 }
 
+#[derive(Debug)]
+pub struct DownloadSession {
+    reaper: Option<ReaperProcess>,
+}
+
 lazy_static::lazy_static! {
     /// Whether owned apps are being fetched
     pub static ref FETCHING_APPS: Mutex<bool> = Mutex::new(false);
     static ref SAVE_DATES_REGEX: Regex = Regex::new(r"save date: (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})").unwrap();
     static ref MOVE_CANCELLATION_TOKEN: Mutex<Option<CancellationToken>> = Mutex::default();
-    static ref INSTALL_REAPER: Arc<tokio::sync::Mutex<Vec<ReaperProcess>>> = Arc::new(tokio::sync::Mutex::new(Vec::new()));
+    static ref INSTALL_REAPER: Arc<tokio::sync::Mutex<DownloadSession>> = Arc::new(tokio::sync::Mutex::new(DownloadSession { reaper: None}));
 }
 
 #[derive(Clone)]
@@ -230,15 +237,42 @@ impl Legendary {
         Ok(response)
     }
 
+    /// Return the command line and arguments used to launch a game
+    pub async fn get_launch_parameters(
+        &self,
+        app_id: &str,
+    ) -> ResultWithError<LegendaryLaunchParams> {
+        let mut reaper = ReaperProcess::new(&self.config.legendary_command);
+        reaper.command.args([
+            "launch",
+            app_id,
+            "--json",
+            "--dry-run",
+            "--skip-version-check",
+            "--no-wine",
+        ]);
+        let response = reaper
+            .execute_with_output_json(Some(check_invalid_legendary_response))
+            .await?;
+
+        Ok(response)
+    }
+
     /// Return launch options for a game
     pub async fn get_launch_options(&self, app_id: String) -> ResultWithError<Vec<LaunchOption>> {
+        let launch_params = self.get_launch_parameters(&app_id).await?;
         let game_info = self.info(&app_id).await?;
         let mut launch_options: Vec<LaunchOption> = Vec::new();
+        let arguments = [
+            launch_params.game_parameters.join(" "),
+            launch_params.egl_parameters.join(" "),
+            launch_params.user_parameters.join(" "),
+        ];
         launch_options.push(LaunchOption {
             description: "Launch".to_string(),
-            executable: game_info.manifest.launch_exe.clone(),
-            arguments: game_info.manifest.launch_command.clone(),
-            working_directory: "".to_string(),
+            executable: launch_params.game_executable.clone(),
+            arguments: arguments.join(" "),
+            working_directory: launch_params.working_directory.clone(),
             environment: [].to_vec(),
             launch_type: LaunchType::Game,
             hardware_tags: [].to_vec(),
@@ -249,10 +283,13 @@ impl Legendary {
             .launch_options
             .iter()
             .map(|launch_option| {
+                let launch_option_arguments =
+                    [arguments.join(" "), launch_option.parameters.clone()];
+
                 launch_options.push(LaunchOption {
                     description: launch_option.name.clone(),
-                    executable: game_info.manifest.launch_exe.clone(),
-                    arguments: launch_option.parameters.clone(),
+                    executable: launch_params.game_executable.clone(),
+                    arguments: launch_option_arguments.join(" "),
                     working_directory: "".to_string(),
                     environment: [].to_vec(),
                     launch_type: LaunchType::Game,
@@ -321,7 +358,8 @@ impl Legendary {
         reaper.execute().await?;
         let stdout = reaper.stdout().await?;
         let stderr = reaper.stderr().await?;
-        INSTALL_REAPER.lock().await.push(reaper);
+        let mut download_session = INSTALL_REAPER.lock().await;
+        download_session.reaper = Some(reaper);
 
         // Set child for session
         info!("Reaper initialized");
@@ -362,13 +400,16 @@ impl Legendary {
     }
 
     pub async fn pause_download(&self) -> ResultWithError<i32> {
-        let install_reaper = INSTALL_REAPER.lock().await;
-        if let Some(reaper) = install_reaper.first() {
-            reaper.to_owned().terminate().await?;
+        log::info!("Pausing download");
+        let mut download_session = INSTALL_REAPER.lock().await;
+        if let Some(reaper) = &download_session.reaper {
+            if let Err(err) = reaper.to_owned().terminate().await {
+                log::error!("Failed to stop reaper: {:?}", err);
+            }
         } else {
-            log::warn!("No install reaper found");
+            log::error!("No install reaper found");
         };
-        INSTALL_REAPER.lock().await.clear();
+        download_session.reaper = None;
         log::info!("Download paused");
         Ok(0)
     }

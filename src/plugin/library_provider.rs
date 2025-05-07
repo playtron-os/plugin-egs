@@ -401,11 +401,6 @@ impl LibraryProvider {
         }
     }
 
-    async fn sync_installed_apps(&self) -> fdo::Result<()> {
-        log::info!("sync installed apps");
-        Ok(())
-    }
-
     async fn pause_install(&self) -> fdo::Result<()> {
         self.service.pause_install().await
     }

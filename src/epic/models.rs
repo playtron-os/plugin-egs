@@ -334,3 +334,17 @@ pub struct LegendaryUplayStatus {
     pub activated: Vec<LegendaryGameListInstalledInfo>,
     pub redeemable: Vec<LegendaryGameListInstalledInfo>,
 }
+
+#[derive(Serialize, Deserialize)]
+pub struct LegendaryLaunchParams {
+    pub game_parameters: Vec<String>,
+    pub game_executable: String,
+    pub game_directory: String,
+    pub egl_parameters: Vec<String>,
+    pub launch_command: Vec<String>,
+    pub working_directory: String,
+    pub user_parameters: Vec<String>,
+    pub environment: HashMap<String, String>,
+    pub pre_launch_command: String,
+    pub pre_launch_wait: bool,
+}
