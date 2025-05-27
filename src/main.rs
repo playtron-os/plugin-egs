@@ -2,10 +2,10 @@ use std::env;
 use std::future::pending;
 mod auth;
 mod constants;
+mod epic;
 mod plugin;
 mod types;
 mod utils;
-mod epic;
 
 use epic::service::EpicService;
 

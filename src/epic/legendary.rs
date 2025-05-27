@@ -16,7 +16,7 @@ use crate::{
         },
         models::{
             DownloadSizeType, EpicStatusResponse, LegendaryGameInfo, LegendaryGameListInfo,
-            LegendaryInstalledGameResponse,
+            LegendaryInstalledGameResponse, LegendarySandboxType,
         },
     },
     plugin::{errors::PluginError, library_provider::LibraryProviderSignals},
@@ -318,8 +318,20 @@ impl Legendary {
         emitter: SignalEmitter<'_>,
     ) -> ResultWithError<()> {
         let cached_meta = read_metadata_from_cache(&app_id).await?;
-        let asset_info = cached_meta.asset_infos.get("Windows").unwrap();
-        let version = asset_info.build_version.to_owned();
+        let asset_infos = cached_meta.asset_infos.get(&Platform::Windows.to_string()).unwrap();
+        let asset = asset_infos.into_iter().find(|asset_info| {
+            let asset_namespace = cached_meta.namespaces.get(&asset_info.namespace);
+            if let Some(branch) = &options.branch {
+                asset_namespace.is_some_and(|n| n.sandbox_name == *branch)
+            } else {
+                asset_namespace.is_some_and(|n| n.sandbox_type == LegendarySandboxType::Public)
+            }
+        });
+        let Some(asset) = asset.or_else(|| asset_infos.first()) else {
+            return Err(PluginError::DownloadFailed.to_string().into());
+        };
+        let version = asset.build_version.clone();
+
         let folder_name = cached_meta.get_install_folder();
 
         let game_info: LegendaryGameInfo = self.info(&app_id).await.unwrap();
@@ -329,6 +341,8 @@ impl Legendary {
             "--yes".to_owned(),
             "--with-dlcs".to_owned(),
             "--skip-sdl".to_owned(),
+            "--namespace".to_owned(),
+            asset.namespace.clone(),
         ];
 
         // base_path is optional in the context of updates
@@ -443,7 +457,9 @@ impl Legendary {
 
     pub async fn get_installed_apps(&self) -> ResultWithError<Vec<LegendaryInstalledGameResponse>> {
         let mut reaper = ReaperProcess::new(&self.config.legendary_command);
-        reaper.command.args(["list-installed", "--json"]);
+        reaper
+            .command
+            .args(["list-installed", "--check-updates", "--json"]);
         let (status, stdout, stderr) = reaper
             .execute_with_output(Some(check_invalid_legendary_response))
             .await?;
@@ -468,19 +484,27 @@ impl Legendary {
         Ok(response.into_iter().collect::<Vec<LegendaryGameListInfo>>())
     }
 
-    pub fn get_app_versions(&self, apps: Vec<LegendaryGameListInfo>) -> Vec<(String, String)> {
-        let mut app_versions = Vec::<(String, String)>::new();
-        let _ = apps
-            .iter()
-            .map(|game_info| {
-                if let Some(asset_info) = game_info.asset_infos.get(&Platform::Windows.to_string())
-                {
-                    app_versions
-                        .push((game_info.app_name.clone(), asset_info.build_version.clone()));
+    pub async fn get_installed_apps_versions(
+        &self,
+        apps: &[LegendaryInstalledGameResponse],
+    ) -> ResultWithError<Vec<(String, String)>> {
+        let mut new_versions = Vec::new();
+        for app in apps {
+            let cached_data = read_metadata_from_cache(&app.app_name).await?;
+            if let Some(app_assets) = cached_data.asset_infos.get(&app.platform) {
+                let asset = match &app.namespace {
+                    Some(ns) => app_assets.iter().find(|a| a.namespace == *ns),
+                    None => app_assets.first(),
+                };
+                if let Some(asset) = asset {
+                    if asset.build_version != app.version {
+                        new_versions.push((app.app_name.clone(), asset.build_version.clone()))
+                    }
                 }
-            })
-            .collect::<Vec<()>>();
-        app_versions
+            }
+        }
+
+        Ok(new_versions)
     }
 
     pub async fn get_game_info(
