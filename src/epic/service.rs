@@ -8,7 +8,7 @@ use crate::epic::{
 use crate::plugin::library_provider::LibraryProviderSignals;
 use crate::types::app::{
     AppEulaInformation, AppType, InstallOption, InstallScript, InstalledApp, ItemMetadata,
-    LaunchOption, Platform, PlaytronAppType, PlaytronImage, PlaytronProvider, ProviderItem,
+    LaunchOption, PlaytronAppType, PlaytronImage, PlaytronProvider, ProviderItem,
     Registry, RequirementOSConfig, RunProcessParams,
 };
 use crate::types::cloud_sync::CloudSyncOperation;
@@ -119,7 +119,9 @@ impl EpicService {
                     .await
                 {
                     for (app_id, version) in updated {
-                        emitter.app_new_version_found(app_id, version).await;
+                        if let Err(err) = emitter.app_new_version_found(app_id, version).await {
+                            log::error!("Failed to notify about new version for {err}");
+                        }
                     }
                 }
 
@@ -290,7 +292,7 @@ impl EpicService {
         }
 
         let from_path = game_info.install_path;
-        let folder_name = from_path.split('/').last().unwrap();
+        let folder_name = from_path.split('/').next_back().unwrap();
         let path_buf = Path::new(&base_path).join(folder_name);
         let dest_path = path_buf.to_str().unwrap();
         log::info!("Moving from {} to {}", from_path, dest_path);

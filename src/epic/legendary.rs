@@ -319,7 +319,7 @@ impl Legendary {
     ) -> ResultWithError<()> {
         let cached_meta = read_metadata_from_cache(&app_id).await?;
         let asset_infos = cached_meta.asset_infos.get(&Platform::Windows.to_string()).unwrap();
-        let asset = asset_infos.into_iter().find(|asset_info| {
+        let asset = asset_infos.iter().find(|asset_info| {
             let asset_namespace = cached_meta.namespaces.get(&asset_info.namespace);
             if let Some(branch) = &options.branch {
                 asset_namespace.is_some_and(|n| n.sandbox_name == *branch)
@@ -740,10 +740,10 @@ async fn handle_download(
         }
 
         let capture = regex_capture(DOWNLOADED_SIZE_REGEX.to_owned(), line.clone());
-        let capture = capture.split(' ').last().unwrap_or_default();
+        let capture = capture.split(' ').next_back().unwrap_or_default();
         let downloaded_size = capture.parse::<f32>();
         let capture = regex_capture(WRITTEN_SIZE_REGEX.to_owned(), line.clone());
-        let capture = capture.split(' ').last().unwrap_or_default();
+        let capture = capture.split(' ').next_back().unwrap_or_default();
         let written_size = capture.parse::<f32>().map_or(0, megabytes_to_bytes);
 
         if let Ok(downloaded_size) = downloaded_size {

@@ -5,7 +5,7 @@ pub fn regex_capture(regex: Regex, string: String) -> String {
     let capture = regex.captures(string.as_str());
 
     // Gets the last capture
-    if let Some(capture) = capture.iter().last() {
+    if let Some(capture) = capture.iter().next_back() {
         if let Some(capture) = capture.get(0) {
             return capture.as_str().to_owned();
         }
