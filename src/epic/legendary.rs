@@ -318,7 +318,10 @@ impl Legendary {
         emitter: SignalEmitter<'_>,
     ) -> ResultWithError<()> {
         let cached_meta = read_metadata_from_cache(&app_id).await?;
-        let asset_infos = cached_meta.asset_infos.get(&Platform::Windows.to_string()).unwrap();
+        let asset_infos = cached_meta
+            .asset_infos
+            .get(&Platform::Windows.to_string())
+            .unwrap();
         let asset = asset_infos.iter().find(|asset_info| {
             let asset_namespace = cached_meta.namespaces.get(&asset_info.namespace);
             if let Some(branch) = &options.branch {

@@ -8,8 +8,8 @@ use crate::epic::{
 use crate::plugin::library_provider::LibraryProviderSignals;
 use crate::types::app::{
     AppEulaInformation, AppType, InstallOption, InstallScript, InstalledApp, ItemMetadata,
-    LaunchOption, PlaytronAppType, PlaytronImage, PlaytronProvider, ProviderItem,
-    Registry, RequirementOSConfig, RunProcessParams,
+    LaunchOption, PlaytronAppType, PlaytronImage, PlaytronProvider, ProviderItem, Registry,
+    RegistryEntry, RequirementOSConfig, RunProcessParams,
 };
 use crate::types::cloud_sync::CloudSyncOperation;
 use crate::types::results::{EmptyResult, ResultWithError};
@@ -243,7 +243,12 @@ impl EpicService {
                     path: post_install_steps.get_prerequisite_id(),
                     registry: Registry {
                         dword: None,
-                        string: None,
+                        string: Some(vec![RegistryEntry {
+                            group: "HKEY_CLASSES_ROOT\\com.epicgames.launcher".to_string(),
+                            key: "(Default)".to_string(),
+                            value: "".to_string(),
+                            language: None,
+                        }]),
                     },
                     run_process: [RunProcessParams {
                         name: post_install_steps.get_prerequisite_id(),
