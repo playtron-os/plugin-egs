@@ -9,7 +9,7 @@ use crate::plugin::library_provider::LibraryProviderSignals;
 use crate::types::app::{
     AppEulaInformation, AppType, InstallOption, InstallScript, InstalledApp, ItemMetadata,
     LaunchOption, PlaytronAppType, PlaytronImage, PlaytronProvider, ProviderItem, Registry,
-    RequirementOSConfig, RunProcessParams,
+    RegistryEntry, RequirementOSConfig, RunProcessParams,
 };
 use crate::types::cloud_sync::CloudSyncOperation;
 use crate::types::results::{EmptyResult, ResultWithError};
@@ -91,7 +91,10 @@ impl EpicService {
         Ok(game_info.get_download_size())
     }
 
-    pub async fn get_installed_apps(&self) -> fdo::Result<Vec<InstalledApp>> {
+    pub async fn get_installed_apps(
+        &self,
+        emitter: SignalEmitter<'_>,
+    ) -> fdo::Result<Vec<InstalledApp>> {
         match self.legendary.get_installed_apps().await {
             Ok(legendary_installed) => {
                 let installed_apps = legendary_installed
@@ -109,6 +112,19 @@ impl EpicService {
                         disabled_dlc: vec![],
                     })
                     .collect();
+
+                if let Ok(updated) = self
+                    .legendary
+                    .get_installed_apps_versions(&legendary_installed)
+                    .await
+                {
+                    for (app_id, version) in updated {
+                        if let Err(err) = emitter.app_new_version_found(app_id, version).await {
+                            log::error!("Failed to notify about new version for {err}");
+                        }
+                    }
+                }
+
                 Ok(installed_apps)
             }
             Err(e) => Err(fdo::Error::Failed(e.to_string())),
@@ -140,25 +156,29 @@ impl EpicService {
         Ok(items)
     }
 
-    pub async fn get_provider_items_and_versions(
-        &self,
-    ) -> fdo::Result<(Vec<ProviderItem>, Vec<(String, String)>)> {
-        let apps = match self.legendary.get_apps().await {
-            Ok(apps) => apps,
-            Err(e) => {
-                return Err(fdo::Error::Failed(e.to_string()));
-            }
-        };
-        let items: Vec<ProviderItem> = apps.iter().map(legendary_app_to_provider_item).collect();
-        let app_versions = self.legendary.get_app_versions(apps);
-        Ok((items, app_versions))
-    }
-
     pub async fn uninstall(&self, app_id: &str) -> fdo::Result<()> {
         match self.legendary.uninstall(app_id).await {
             Ok(_) => Ok(()),
             Err(e) => Err(fdo::Error::Failed(e.to_string())),
         }
+    }
+
+    pub async fn get_install_options(
+        &self,
+        app_id: &str,
+    ) -> ResultWithError<Vec<(String, String, Vec<String>)>> {
+        let metadata = read_metadata_from_cache(app_id).await?;
+        let branches: Vec<String> = metadata
+            .namespaces
+            .into_values()
+            .map(|n| n.sandbox_name)
+            .collect();
+
+        Ok(vec![(
+            "branch".to_string(),
+            "Branch to install from".to_string(),
+            branches,
+        )])
     }
 
     pub async fn install(
@@ -176,11 +196,13 @@ impl EpicService {
         let install_options = InstallOption {
             language: options
                 .get("language")
-                .unwrap()
-                .clone()
-                .downcast::<String>()
-                .ok(),
-            os: options.get("os").unwrap().clone().downcast::<String>().ok(),
+                .and_then(|l| l.clone().downcast::<String>().ok()),
+            os: options
+                .get("os")
+                .and_then(|os| os.clone().downcast::<String>().ok()),
+            branch: options
+                .get("branch")
+                .and_then(|b| b.clone().downcast::<String>().ok()),
             verify,
         };
 
@@ -221,7 +243,12 @@ impl EpicService {
                     path: post_install_steps.get_prerequisite_id(),
                     registry: Registry {
                         dword: None,
-                        string: None,
+                        string: Some(vec![RegistryEntry {
+                            group: "HKEY_CLASSES_ROOT\\com.epicgames.launcher".to_string(),
+                            key: "(Default)".to_string(),
+                            value: "".to_string(),
+                            language: None,
+                        }]),
                     },
                     run_process: [RunProcessParams {
                         name: post_install_steps.get_prerequisite_id(),
@@ -270,7 +297,7 @@ impl EpicService {
         }
 
         let from_path = game_info.install_path;
-        let folder_name = from_path.split('/').last().unwrap();
+        let folder_name = from_path.split('/').next_back().unwrap();
         let path_buf = Path::new(&base_path).join(folder_name);
         let dest_path = path_buf.to_str().unwrap();
         log::info!("Moving from {} to {}", from_path, dest_path);

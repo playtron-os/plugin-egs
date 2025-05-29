@@ -349,4 +349,5 @@ pub struct InstallOption {
     pub language: Option<String>,
     pub os: Option<String>,
     pub verify: Option<bool>,
+    pub branch: Option<String>,
 }

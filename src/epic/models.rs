@@ -1,16 +1,18 @@
 use crate::types::app::{PlaytronAppType, PlaytronImage};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
 
 fn default_empty_string() -> String {
     "".to_string()
 }
 
-#[derive(Serialize, Deserialize, Default, Debug, Clone)]
+#[derive(Serialize, Deserialize, Default, Debug, Clone, PartialEq)]
 pub struct LegendaryAssetInfo {
     pub app_name: String,
     pub asset_id: String,
     pub build_version: String,
+    #[serde(default)]
+    pub namespace: String,
 }
 
 #[derive(Serialize, Deserialize, Default, Debug, PartialEq, Clone)]
@@ -82,9 +84,11 @@ pub struct LegendaryGameListInfo {
     /// Title/name of the app
     pub app_title: String,
     /// Map of asset infos where key is the platform such as "Windows"
-    pub asset_infos: HashMap<String, LegendaryAssetInfo>,
+    #[serde(rename = "asset_infos_v2")]
+    pub asset_infos: HashMap<String, Vec<LegendaryAssetInfo>>,
     /// Metadata related to the game
     pub metadata: LegendaryMetadata,
+    pub namespaces: HashMap<String, LegendaryNamespaceData>,
 }
 
 impl LegendaryGameListInfo {
@@ -179,12 +183,14 @@ pub struct LegendaryGame {
     pub app_name: String,
     pub title: String,
     pub version: String,
-    pub platform_versions: HashMap<String, String>,
+    pub platform_versions: HashMap<String, Vec<LegendaryAssetInfo>>,
     pub cloud_saves_supported: bool,
     pub cloud_save_folder: Option<String>,
     pub cloud_save_folder_mac: Option<String>,
     pub is_dlc: bool,
     pub launch_options: Vec<LegendaryGameLaunchOptions>,
+    #[serde(default)]
+    pub namespaces: Vec<LegendaryNamespaceData>,
     // TODO: Add proper type, need to find a game with this property
     // pub owned_dlc: Vec<String>,
 }
@@ -309,6 +315,7 @@ pub struct LegendaryInstalledGameResponse {
     pub title: String,
     pub uninstaller: Option<HashMap<String, String>>,
     pub version: String,
+    pub namespace: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Default)]
@@ -347,4 +354,43 @@ pub struct LegendaryLaunchParams {
     pub environment: HashMap<String, String>,
     pub pre_launch_command: String,
     pub pre_launch_wait: bool,
+}
+
+#[derive(Serialize, Debug, Default, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum LegendarySandboxType {
+    #[default]
+    Public,
+    Private,
+}
+
+impl<'de> Deserialize<'de> for LegendarySandboxType {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s: String = Deserialize::deserialize(deserializer)?;
+        match s.to_lowercase().as_str() {
+            "public" => Ok(LegendarySandboxType::Public),
+            "private" => Ok(LegendarySandboxType::Private),
+            _ => Ok(LegendarySandboxType::Private), // fallback to Private
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Default, Debug, PartialEq)]
+pub struct LegendaryNamespaceData {
+    pub namespace: String,
+    #[serde(alias = "catalogItemId")]
+    pub catalog_item_id: String,
+    #[serde(alias = "appName")]
+    pub app_name: String,
+    #[serde(alias = "productId")]
+    pub product_id: String,
+    #[serde(alias = "sandboxName")]
+    pub sandbox_name: String,
+    #[serde(alias = "sandboxType")]
+    pub sandbox_type: LegendarySandboxType,
+    #[serde(alias = "recordType")]
+    pub record_type: String,
 }

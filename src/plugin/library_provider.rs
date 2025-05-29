@@ -173,23 +173,27 @@ impl LibraryProvider {
     ///   GetInstallOptions "s" "460950"
     async fn get_install_options(
         &self,
-        _app_id: &str,
+        app_id: &str,
     ) -> fdo::Result<Vec<(String, String, Vec<String>)>> {
         // Install options should be built from the install_tags in the manifest
         // Those tags aren't standardized, we need to map them to known languages
-        Ok(Vec::new())
+        // For now we handle just branches
+        match self.service.get_install_options(app_id).await {
+            Ok(opts) => Ok(opts),
+            Err(err) => Err(fdo::Error::Failed(err.to_string())),
+        }
     }
 
     /// busctl --user call one.playtron.BasePlugin \
     ///   /one/playtron/BasePlugin/PluginClient0 \
     ///   one.playtron.plugin.LibraryProvider \
     ///   GetInstalledApps
-    async fn get_installed_apps(&self) -> fdo::Result<Vec<InstalledApp>> {
+    async fn get_installed_apps(
+        &self,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+    ) -> fdo::Result<Vec<InstalledApp>> {
         log::info!("Getting installed apps");
-        match self.service.get_installed_apps().await {
-            Ok(apps) => Ok(apps),
-            Err(err) => Err(fdo::Error::Failed(err.to_string())),
-        }
+        self.service.get_installed_apps(emitter).await
     }
 
     /// Returns a provider item for a given provider app id.
@@ -214,20 +218,6 @@ impl LibraryProvider {
     ///   GetProviderItems
     async fn get_provider_items(&self) -> fdo::Result<Vec<ProviderItem>> {
         self.service.get_provider_items().await
-    }
-
-    /// Returns all provider items and app versions.
-    ///
-    /// # Example
-    ///
-    /// busctl --user call one.playtron.EpicGames \
-    ///   /one/playtron/EpicGames/LegendaryClient0 \
-    ///   one.playtron.plugin.LibraryProvider \
-    ///   GetProviderItemsAndVersions
-    async fn get_provider_items_with_versions(
-        &self,
-    ) -> fdo::Result<(Vec<ProviderItem>, Vec<(String, String)>)> {
-        self.service.get_provider_items_and_versions().await
     }
 
     /// Return the components to be installed after the game is downloaded
