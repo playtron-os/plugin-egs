@@ -1,8 +1,8 @@
 pub const BUS_NAME: &str = "one.playtron.EpicGames";
 pub const CLIENT_PATH: &str = "/one/playtron/EpicGames/LegendaryClient0";
 pub const NAME: &str = "Epic Games Plugin";
-pub const VERSION: &str = "0.1.0";
-pub const MINIMUM_API_VERSION: &str = "0.1.0";
+pub const VERSION: &str = "0.1.1";
+pub const MINIMUM_API_VERSION: &str = "0.1.1";
 pub const LIBRARY_PROVIDER_NAME: &str = "Epic Games Store";
 pub const LIBRARY_PROVIDER_ID: &str = "EpicGamesStore";
 // pub const CLIENT_ID: &str = "34a02cf8f4414e29b15921876da36f9a";
