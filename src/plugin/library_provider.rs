@@ -60,6 +60,7 @@ impl LibraryProvider {
         install_directory: String,
         total_download_size: u64,
         requires_internet_connection: bool,
+        os: String
     ) -> zbus::Result<()>;
 
     /// Emitted when a game’s installation step is completed.

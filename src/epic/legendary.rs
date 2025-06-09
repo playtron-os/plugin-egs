@@ -391,6 +391,7 @@ impl Legendary {
                 install_directory.to_str().unwrap().to_owned(),
                 total_download_size,
                 false,
+                "windows".to_owned()
             )
             .await
             .unwrap();
