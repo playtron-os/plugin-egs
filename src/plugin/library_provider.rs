@@ -3,6 +3,7 @@ use crate::epic::service::EpicService;
 use crate::types::app::{
     AppEulaInformation, DownloadStage, InstalledApp, LaunchOption, ProviderItem,
 };
+use crate::types::cloud_sync::CloudPath;
 use std::collections::HashMap;
 use zbus::fdo;
 use zbus::object_server::SignalEmitter;
@@ -60,7 +61,7 @@ impl LibraryProvider {
         install_directory: String,
         total_download_size: u64,
         requires_internet_connection: bool,
-        os: String
+        os: String,
     ) -> zbus::Result<()>;
 
     /// Emitted when a game’s installation step is completed.
@@ -366,7 +367,7 @@ impl LibraryProvider {
         &self,
         app_id: String,
         platform: String,
-    ) -> fdo::Result<Vec<String>> {
+    ) -> fdo::Result<Vec<CloudPath>> {
         self.service.get_save_path_patterns(app_id, platform).await
     }
 
