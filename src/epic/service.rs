@@ -109,6 +109,7 @@ impl EpicService {
                         latest_version: installed_app.version.clone(),
                         update_pending: installed_app.needs_verification,
                         os: installed_app.platform.clone(),
+                        language: "".to_owned(),
                         disabled_dlc: vec![],
                     })
                     .collect();
