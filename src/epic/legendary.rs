@@ -14,6 +14,7 @@ use crate::{
             check_invalid_legendary_response, execute_legendary_handle_auth_json, parse_size,
             read_metadata_from_cache, require_legendary, EPIC_MAX_WRITER_QUEUE_EMPTY_ERROR_COUNT,
         },
+        constants::LANG_CONFIG_VALUES,
         models::{
             DownloadSizeType, EpicStatusResponse, LegendaryGameInfo, LegendaryGameListInfo,
             LegendaryInstalledGameResponse, LegendarySandboxType,
@@ -38,8 +39,8 @@ use chrono::NaiveDateTime;
 use log::info;
 use parking_lot::Mutex;
 use regex::Regex;
-use std::sync::Arc;
 use std::time::Duration;
+use std::{collections::HashMap, sync::Arc};
 use std::{path::Path, process::Stdio};
 use tokio::{process::Command, sync::mpsc::Receiver, time::Instant};
 use tokio_util::sync::CancellationToken;
@@ -241,9 +242,10 @@ impl Legendary {
     pub async fn get_launch_parameters(
         &self,
         app_id: &str,
+        params: HashMap<String, String>,
     ) -> ResultWithError<LegendaryLaunchParams> {
         let mut reaper = ReaperProcess::new(&self.config.legendary_command);
-        reaper.command.args([
+        let mut args: Vec<&str> = Vec::from([
             "launch",
             app_id,
             "--json",
@@ -251,6 +253,14 @@ impl Legendary {
             "--skip-version-check",
             "--no-wine",
         ]);
+        if params.contains_key("language") {
+            let language = params.get("language").unwrap().as_str();
+            if let Some(config_value) = LANG_CONFIG_VALUES.get(language) {
+                args.push("--language");
+                args.push(config_value);
+            }
+        }
+        reaper.command.args(args);
         let response = reaper
             .execute_with_output_json(Some(check_invalid_legendary_response))
             .await?;
@@ -259,8 +269,12 @@ impl Legendary {
     }
 
     /// Return launch options for a game
-    pub async fn get_launch_options(&self, app_id: String) -> ResultWithError<Vec<LaunchOption>> {
-        let launch_params = self.get_launch_parameters(&app_id).await?;
+    pub async fn get_launch_options(
+        &self,
+        app_id: String,
+        params: HashMap<String, String>,
+    ) -> ResultWithError<Vec<LaunchOption>> {
+        let launch_params = self.get_launch_parameters(&app_id, params).await?;
         let game_info = self.info(&app_id).await?;
         let mut launch_options: Vec<LaunchOption> = Vec::new();
         let arguments = [
@@ -364,6 +378,17 @@ impl Legendary {
             arguments[0] = "repair".to_owned();
             arguments.push("--repair-and-update".to_owned());
         }
+
+        if let Some(language) = options.language {
+            game_info
+                .get_install_tags_for_language(language)
+                .iter()
+                .for_each(|tag| {
+                    arguments.push("--install_tag".to_owned());
+                    arguments.push(tag.to_owned())
+                });
+        }
+
         // Execute legendary command
         let mut reaper = ReaperProcess::new(&self.config.legendary_command);
         reaper.with_identifier(app_id.to_string());
@@ -391,7 +416,7 @@ impl Legendary {
                 install_directory.to_str().unwrap().to_owned(),
                 total_download_size,
                 false,
-                "windows".to_owned()
+                "windows".to_owned(),
             )
             .await
             .unwrap();
