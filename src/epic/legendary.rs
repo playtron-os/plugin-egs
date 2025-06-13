@@ -39,8 +39,8 @@ use chrono::NaiveDateTime;
 use log::info;
 use parking_lot::Mutex;
 use regex::Regex;
+use std::sync::Arc;
 use std::time::Duration;
-use std::{collections::HashMap, sync::Arc};
 use std::{path::Path, process::Stdio};
 use tokio::{process::Command, sync::mpsc::Receiver, time::Instant};
 use tokio_util::sync::CancellationToken;
@@ -242,7 +242,7 @@ impl Legendary {
     pub async fn get_launch_parameters(
         &self,
         app_id: &str,
-        params: HashMap<String, String>,
+        install_options: InstallOption,
     ) -> ResultWithError<LegendaryLaunchParams> {
         let mut reaper = ReaperProcess::new(&self.config.legendary_command);
         let mut args: Vec<&str> = Vec::from([
@@ -253,9 +253,9 @@ impl Legendary {
             "--skip-version-check",
             "--no-wine",
         ]);
-        if params.contains_key("language") {
-            let language = params.get("language").unwrap().as_str();
-            if let Some(config_value) = LANG_CONFIG_VALUES.get(language) {
+        if let Some(language) = install_options.language {
+            let language = language.clone();
+            if let Some(config_value) = LANG_CONFIG_VALUES.get(language.as_str()) {
                 args.push("--language");
                 args.push(config_value);
             }
@@ -272,9 +272,9 @@ impl Legendary {
     pub async fn get_launch_options(
         &self,
         app_id: String,
-        params: HashMap<String, String>,
+        install_options: InstallOption,
     ) -> ResultWithError<Vec<LaunchOption>> {
-        let launch_params = self.get_launch_parameters(&app_id, params).await?;
+        let launch_params = self.get_launch_parameters(&app_id, install_options).await?;
         let game_info = self.info(&app_id).await?;
         let mut launch_options: Vec<LaunchOption> = Vec::new();
         let arguments = [

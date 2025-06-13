@@ -242,11 +242,20 @@ impl EpicService {
     pub async fn get_launch_options(
         &self,
         app_id: &str,
-        params: HashMap<String, String>,
+        params: HashMap<String, zbus::zvariant::Value<'_>>,
     ) -> fdo::Result<Vec<LaunchOption>> {
+        let install_options = InstallOption {
+            language: params
+                .get("language")
+                .and_then(|l| l.clone().downcast::<String>().ok()),
+            os: None,
+            branch: None,
+            verify: None,
+        };
+
         match self
             .legendary
-            .get_launch_options(app_id.to_string(), params)
+            .get_launch_options(app_id.to_string(), install_options)
             .await
         {
             Ok(launch_options) => Ok(launch_options),
