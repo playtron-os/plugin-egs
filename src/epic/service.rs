@@ -11,7 +11,7 @@ use crate::types::app::{
     LaunchOption, PlaytronAppType, PlaytronImage, PlaytronProvider, ProviderItem, Registry,
     RegistryEntry, RequirementOSConfig, RunProcessParams,
 };
-use crate::types::cloud_sync::CloudSyncOperation;
+use crate::types::cloud_sync::{CloudPath, CloudSyncOperation};
 use crate::types::results::{EmptyResult, ResultWithError};
 use crate::utils::system::move_folder_with_progress;
 use futures::StreamExt;
@@ -367,18 +367,25 @@ impl EpicService {
         &self,
         app_id: String,
         platform: String,
-    ) -> fdo::Result<Vec<String>> {
+    ) -> fdo::Result<Vec<CloudPath>> {
         let game_info = match self.legendary.info(&app_id).await {
             Ok(game_info) => game_info,
             Err(e) => return Err(fdo::Error::Failed(e.to_string())),
         };
+        let mut path = "".to_string();
         if platform == "mac" && game_info.game.cloud_save_folder_mac.is_some() {
-            Ok([game_info.game.cloud_save_folder_mac.unwrap()].to_vec())
+            path = game_info.game.cloud_save_folder_mac.unwrap();
         } else if game_info.game.cloud_save_folder.is_some() {
-            Ok([game_info.game.cloud_save_folder.unwrap()].to_vec())
-        } else {
-            Ok(Vec::new())
+            path = game_info.game.cloud_save_folder.unwrap();
         }
+        let cloud_path = CloudPath {
+            alias: "__default".to_string(),
+            pattern: "*".to_string(),
+            recursive: true,
+            platforms: [platform].to_vec(),
+            path,
+        };
+        Ok([cloud_path].to_vec())
     }
 
     pub async fn pre_launch_hook(

@@ -72,7 +72,7 @@ pub struct CloudSyncFailed {
     pub quota: u64,
 }
 
-#[derive(Serialize, Deserialize, Debug, Type)]
+#[derive(Serialize, Deserialize, Debug, Type, Clone)]
 pub struct CloudPath {
     pub alias: String,
     pub path: String,

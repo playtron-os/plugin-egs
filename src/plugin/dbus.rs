@@ -22,9 +22,9 @@ pub async fn build_connection(service: EpicService) -> EmptyResult {
         service: service.clone(),
     };
     let plugin_dependencies = plugin::plugin_dependencies::PluginDependencies {};
-    // let cloud_save_provider = plugin::cloud_save_provider::CloudSaveProvider {
-    //     service: service.clone(),
-    // };
+    let cloud_save_provider = plugin::cloud_save_provider::CloudSaveProvider {
+        service: service.clone(),
+    };
 
     *CONNECTION.lock().await = Some(
         connection::Builder::session()?
@@ -33,7 +33,7 @@ pub async fn build_connection(service: EpicService) -> EmptyResult {
             .serve_at(CLIENT_PATH, api_token_flow)?
             .serve_at(CLIENT_PATH, plugin)?
             .serve_at(CLIENT_PATH, library_provider)?
-            // .serve_at(CLIENT_PATH, cloud_save_provider)?
+            .serve_at(CLIENT_PATH, cloud_save_provider)?
             .serve_at(CLIENT_PATH, plugin_dependencies)?
             .build()
             .await?,
