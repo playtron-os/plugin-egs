@@ -6,20 +6,19 @@ pub const MINIMUM_API_VERSION: &str = "0.1.1";
 pub const LIBRARY_PROVIDER_NAME: &str = "Epic Games Store";
 pub const LIBRARY_PROVIDER_ID: &str = "EpicGames";
 pub const PLUGIN_ID: &str = "epic";
-// pub const CLIENT_ID: &str = "34a02cf8f4414e29b15921876da36f9a";
-// pub const ALLOWED_ROUTES: [&str; 14] = [
-//     "https://legendary.gl/epiclogin",
-//     "https://newassets.hcaptcha.com",
-//     "https://www.epicgames.com/id/login",
-//     "https://www.epicgames.com/id/api",
-//     "https://www.epicgames.com/site",
-//     "https://epicgames.com/id/login",
-//     "https://accounts.epicgames.com/login",
-//     "https://www.unrealengine.com/id/api",
-//     "https://www.twinmotion.com/id/api",
-//     "https://www.fortnite.com/id/api",
-//     "https://challenges.cloudflare.com",
-//     "https://launcher.store.epicgames.com",
-//     "https://store.epicgames.com",
-//     "https://localhost/launcher",
-// ];
+pub const ALLOWED_ROUTES: [&str; 14] = [
+    "https://legendary.gl/epiclogin",
+    "https://newassets.hcaptcha.com",
+    "https://www.epicgames.com/id/login",
+    "https://www.epicgames.com/id/api",
+    "https://www.epicgames.com/site",
+    "https://epicgames.com/id/login",
+    "https://accounts.epicgames.com/login",
+    "https://www.unrealengine.com/id/api",
+    "https://www.twinmotion.com/id/api",
+    "https://www.fortnite.com/id/api",
+    "https://challenges.cloudflare.com",
+    "https://launcher.store.epicgames.com",
+    "https://store.epicgames.com",
+    "https://localhost/launcher",
+];

@@ -15,7 +15,7 @@ pub async fn build_connection(service: EpicService) -> EmptyResult {
     let user = auth::user::User {
         service: service.clone(),
     };
-    let api_token_flow = auth::api_token::ApiToken {
+    let portal_flow = auth::portal_flow::PortalFlow {
         service: service.clone(),
     };
     let library_provider = plugin::library_provider::LibraryProvider {
@@ -30,7 +30,7 @@ pub async fn build_connection(service: EpicService) -> EmptyResult {
         connection::Builder::session()?
             .name(BUS_NAME)?
             .serve_at(CLIENT_PATH, user)?
-            .serve_at(CLIENT_PATH, api_token_flow)?
+            .serve_at(CLIENT_PATH, portal_flow)?
             .serve_at(CLIENT_PATH, plugin)?
             .serve_at(CLIENT_PATH, library_provider)?
             .serve_at(CLIENT_PATH, cloud_save_provider)?
