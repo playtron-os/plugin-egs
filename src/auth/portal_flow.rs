@@ -1,4 +1,4 @@
-use crate::constants::{ALLOWED_ROUTES, CLIENT_ID};
+use crate::constants::{ALLOWED_ROUTES};
 use crate::epic::service::EpicService;
 use zbus::{fdo, interface};
 pub struct PortalFlow {
@@ -21,19 +21,15 @@ impl PortalFlow {
 
     /// The url used to initiate the auth flow.
     #[zbus(property)]
-    async fn url(&self) -> String {
-        let login_url = format!(
-            "https://www.epicgames.com/id/api/redirect?clientId={CLIENT_ID}&responseType=code"
-        );
-        login_url
+    async fn url(&self) -> &str {
+        "https://www.epicgames.com/id/login?responseType=code"
     }
 
-    ///  JavaScript boolean expression determining if the flow is finished
+    /// RegExp determining if the flow is finished.
+    /// This supports JavaScript syntax of expressions
     #[zbus(property)]
-    async fn is_finished_script(&self) -> &str {
-        "document.body?.firstChild?.tagName === 'PRE' || \
-        (location.href.startsWith('https://www.epicgames.com/site') && \
-        location.href.endsWith('/home'))"
+    async fn final_url_pattern(&self) -> &str {
+        "^https://localhost/"
     }
 
     /// JavaScript code that will run after final url is reached. Returned
@@ -52,11 +48,8 @@ impl PortalFlow {
         ALLOWED_ROUTES.to_vec()
     }
 
-    /// A beginning of the id corresponding to the input field corresponding to
-    /// two factor codes. It is optional can can be left empty
-    #[zbus(property)]
-    async fn popup_url_suffix(&self) -> fdo::Result<String> {
-        Ok("".to_string())
+    fn user_agent(&self) -> &str {
+        "EpicGamesLauncher"
     }
 
     #[zbus(property)]
