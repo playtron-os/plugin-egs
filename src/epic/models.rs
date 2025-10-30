@@ -1,3 +1,4 @@
+use crate::epic::constants::{LANGUAGE_CODES, SUPPORTED_LANGUAGES};
 use crate::types::app::{PlaytronAppType, PlaytronImage};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
@@ -280,6 +281,52 @@ impl LegendaryGameInfo {
             .find(|x| x.tag.is_empty())
             .map(|x| x.size)
             .unwrap_or(self.manifest.download_size)
+    }
+
+    pub fn get_language_from_tag(&self, tag: &str) -> String {
+        let parsed_tag = tag
+            .to_lowercase()
+            .replace("loc_", "")
+            .replace("voice_", "")
+            .replace("-", "_");
+
+        let language = match LANGUAGE_CODES.get(parsed_tag.as_str()) {
+            Some(lang) => lang.to_string(),
+            None => tag.to_string(),
+        };
+        if SUPPORTED_LANGUAGES.contains(&language.as_str()) {
+            return language;
+        }
+        "".to_string()
+    }
+
+    pub fn get_languages(&self) -> Vec<String> {
+        self.manifest
+            .install_tags
+            .iter()
+            .map(|tag| self.get_language_from_tag(tag))
+            .filter(|x| !x.is_empty())
+            .collect()
+    }
+
+    pub fn get_install_tags_for_language(&self, language: String) -> Vec<String> {
+        let install_tags = self.manifest.install_tags.clone();
+        if language.is_empty() || install_tags.is_empty() {
+            return [].to_vec();
+        }
+
+        let mut tags: Vec<String> = [].to_vec();
+        if install_tags.contains(&"".to_string()) {
+            tags.push("".to_string());
+        }
+        let install_tag_languages: HashMap<String, String> = install_tags
+            .iter()
+            .map(|tag| (self.get_language_from_tag(tag), tag.clone()))
+            .collect();
+        if let Some(tag) = install_tag_languages.get(&language) {
+            tags.push(tag.to_string())
+        }
+        tags
     }
 }
 

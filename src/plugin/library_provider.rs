@@ -241,8 +241,12 @@ impl LibraryProvider {
     ///   /one/playtron/EpicGames/LegendaryClient0 \
     ///   one.playtron.plugin.LibraryProvider \
     ///   GetLaunchOptions "s" "460950"
-    async fn get_launch_options(&self, app_id: &str) -> fdo::Result<Vec<LaunchOption>> {
-        self.service.get_launch_options(app_id).await
+    async fn get_launch_options(
+        &self,
+        app_id: &str,
+        params: std::collections::HashMap<String, String>,
+    ) -> fdo::Result<Vec<LaunchOption>> {
+        self.service.get_launch_options(app_id, params).await
     }
 
     async fn get_item_metadata(&self, app_id: &str) -> fdo::Result<String> {

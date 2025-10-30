@@ -169,17 +169,27 @@ impl EpicService {
         app_id: &str,
     ) -> ResultWithError<Vec<(String, String, Vec<String>)>> {
         let metadata = read_metadata_from_cache(app_id).await?;
+
         let branches: Vec<String> = metadata
             .namespaces
             .into_values()
             .map(|n| n.sandbox_name)
             .collect();
+        let game_info = self.legendary.info(app_id).await?;
+        let languages = game_info.get_languages();
 
-        Ok(vec![(
-            "branch".to_string(),
-            "Branch to install from".to_string(),
-            branches,
-        )])
+        Ok(vec![
+            (
+                "branch".to_string(),
+                "Branch to install from".to_string(),
+                branches,
+            ),
+            (
+                "languages".to_string(),
+                "Supported languages".to_string(),
+                languages,
+            ),
+        ])
     }
 
     pub async fn install(
@@ -229,8 +239,16 @@ impl EpicService {
         }
     }
 
-    pub async fn get_launch_options(&self, app_id: &str) -> fdo::Result<Vec<LaunchOption>> {
-        match self.legendary.get_launch_options(app_id.to_string()).await {
+    pub async fn get_launch_options(
+        &self,
+        app_id: &str,
+        params: HashMap<String, String>,
+    ) -> fdo::Result<Vec<LaunchOption>> {
+        match self
+            .legendary
+            .get_launch_options(app_id.to_string(), params)
+            .await
+        {
             Ok(launch_options) => Ok(launch_options),
             Err(e) => Err(fdo::Error::Failed(e.to_string())),
         }
