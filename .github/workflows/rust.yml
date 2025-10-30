@@ -16,19 +16,13 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    - name: Build
-      run: cargo build --verbose --release
+    - name: Install semantic release
+      run: npm install @semantic-release/exec @semantic-release/git @google/semantic-release-replace-plugin
     - name: Run tests
       run: cargo test --verbose
-    - name: Install Generate RPM
-      run:  cargo install cargo-generate-rpm
-    - name: Generate RPM
-      run: cargo generate-rpm 
-    - uses: actions/upload-artifact@v4
-      with:
-        name: Plugin EGS RPM
-        path: target/generate-rpm/*.rpm
-        if-no-files-found: error
-        retention-days: 90
-        compression-level: 0
-        overwrite: true
+    - name: Run sem-release
+      run: make sem-release
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        BUCKET_URL: ${{ secrets.BUCKET_URL }}
