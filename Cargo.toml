@@ -8,6 +8,8 @@ description = "Epic Games plugin for Playtron GameOS"
 [package.metadata.generate-rpm]
 assets = [
   { source = "target/release/plugin-egs", dest = "/usr/bin/plugin-egs", mode = "755" },
+  { source = "./pluginmanifest.json", dest = "/usr/share/playtron/plugins/epic/pluginmanifest.json", mode = "644" },
+  { source = "./LICENSE", dest = "/usr/share/plugin-egs/LICENSE", mode = "644", doc = true },
 ]
 auto-req = "no"
 
