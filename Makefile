@@ -33,12 +33,12 @@ install: build ## Install plugin to the given prefix (default: PREFIX=/usr)
 	install -D -m 755 target/$(TARGET_ARCH)/$(BUILD_TYPE)/$(NAME) \
 		$(PREFIX)/bin/$(NAME)
 	install -D -m 644 ./pluginmanifest.json \
-		$(PREFIX)/share/playtron/plugins/gog/pluginmanifest.json
+		$(PREFIX)/share/playtron/plugins/epic/pluginmanifest.json
 
 .PHONY: uninstall
 uninstall: ## Uninstall plugin
 	rm $(PREFIX)/bin/$(NAME)
-	rm $(PREFIX)/share/playtron/plugins/gog/pluginmanifest.json
+	rm $(PREFIX)/share/playtron/plugins/epic/pluginmanifest.json
 
 ##@ Development
 
