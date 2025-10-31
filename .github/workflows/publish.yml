@@ -1,4 +1,4 @@
-name: Rust
+name: Publish new version
 
 on:
   push:
@@ -13,12 +13,12 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
+  publish:
 
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - name: Install semantic release
       run: npm install @semantic-release/exec @semantic-release/git @google/semantic-release-replace-plugin
     - name: Run tests
