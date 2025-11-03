@@ -8,51 +8,6 @@ pub enum CloudSyncOperation {
     Upload,
 }
 
-#[derive(Serialize, Deserialize)]
-#[serde(tag = "failure_type", content = "details", rename_all = "lowercase")]
-pub enum CloudFailureReason {
-    /// No space on drive
-    Disk { needed: u64 },
-    /// No space in cloud
-    Quota { total: u64, quota: u64 },
-    /// Local and Remote timstamps
-    Conflict { local: u64, remote: u64 },
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum SaveSyncState {
-    Progress,
-    Failure,
-    Success,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct CloudSyncParams {
-    pub user_id: String,
-    pub provider_app_id: String,
-    pub operation: CloudSyncOperation,
-    /// If true the operation should be enforced
-    pub conflict_resolution: bool,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct SaveSyncProgress {
-    pub owned_app_id: String,
-    pub state: SaveSyncState,
-
-    pub progress: Option<f32>,
-    pub failure: Option<CloudFailureReason>,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct AppSaveSyncRequest {
-    pub owned_app_id: String,
-    pub operation: CloudSyncOperation,
-    #[serde(default)]
-    pub conflict_resolution: bool,
-}
-
 // Plugin stuff
 
 #[derive(Serialize, Deserialize, Debug, Type)]

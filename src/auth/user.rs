@@ -33,7 +33,7 @@ impl User {
     ///   Identifier
     #[zbus(property)]
     async fn identifier(&self) -> &str {
-        self.service.account.as_ref().unwrap().as_str()
+        self.service.user_id.as_ref().unwrap().as_str()
     }
 
     /// The status of the provider authentication

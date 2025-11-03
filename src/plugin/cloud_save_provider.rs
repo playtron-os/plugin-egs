@@ -41,10 +41,13 @@ impl CloudSaveProvider {
         platform: &str,
         force: bool,
         paths: Vec<CloudPath>,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
     ) -> fdo::Result<()> {
         log::info!("Downloading cloud saves for {:?} ({:?})", app_id, platform);
         log::info!("Paths {:?}", paths);
-        self.service.cloud_save_download(app_id, force).await
+        self.service
+            .cloud_save_download(&emitter, app_id, paths, force)
+            .await
     }
 
     /// Start uploading the save data for the given provider app
@@ -62,9 +65,12 @@ impl CloudSaveProvider {
         platform: &str,
         force: bool,
         paths: Vec<CloudPath>,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
     ) -> fdo::Result<()> {
         log::info!("Uploading cloud saves for {:?} ({:?})", app_id, platform);
         log::info!("Paths {:?}", paths);
-        self.service.cloud_save_upload(app_id, force).await
+        self.service
+            .cloud_save_upload(&emitter, app_id, paths, force)
+            .await
     }
 }

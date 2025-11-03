@@ -1,4 +1,5 @@
 use crate::constants::LIBRARY_PROVIDER_ID;
+use crate::epic::models::LegendaryUserConfig;
 use crate::epic::overlay;
 use crate::epic::{
     common::require_legendary, config::LegendaryConfig, legendary::Legendary,
@@ -13,6 +14,7 @@ use crate::types::app::{
 };
 use crate::types::cloud_sync::{CloudPath, CloudSyncOperation};
 use crate::types::results::{EmptyResult, ResultWithError};
+use crate::utils::save_paths;
 use crate::utils::system::move_folder_with_progress;
 use futures::StreamExt;
 use parking_lot::Mutex;
@@ -41,6 +43,7 @@ fn legendary_app_to_provider_item(legendary_app: &LegendaryGameListInfo) -> Prov
 pub struct EpicService {
     config: LegendaryConfig,
     legendary: Legendary,
+    pub user_id: Option<String>,
     pub account: Option<String>,
 }
 
@@ -50,6 +53,7 @@ impl EpicService {
         Self {
             config: config.clone(),
             legendary: Legendary::new(Some(config)),
+            user_id: None,
             account: None,
         }
     }
@@ -71,9 +75,23 @@ impl EpicService {
         result
     }
 
+    pub async fn get_user_json(&self) -> ResultWithError<LegendaryUserConfig> {
+        let status = self.legendary.status().await?;
+        let dir = PathBuf::from(status.config_directory);
+        let user_location = dir.join("user.json");
+        let data = tokio::fs::read_to_string(user_location).await?;
+        let config = serde_json::from_str::<LegendaryUserConfig>(&data)?;
+        Ok(config)
+    }
+
     pub async fn set_account(&mut self) {
-        let status = self.legendary.status().await.unwrap();
-        self.account = Some(status.account)
+        if let Ok(data) = self.get_user_json().await {
+            self.user_id = Some(data.account_id);
+            self.account = Some(data.display_name);
+        } else {
+            self.user_id = None;
+            self.account = None;
+        }
     }
 
     pub async fn logout(&mut self) -> EmptyResult {
@@ -351,10 +369,19 @@ impl EpicService {
         Ok(dest_path.to_string())
     }
 
-    pub async fn cloud_save_download(&self, app_id: &str, force: bool) -> fdo::Result<()> {
+    pub async fn cloud_save_download(
+        &self,
+        emitter: &SignalEmitter<'_>,
+        app_id: &str,
+        paths: Vec<CloudPath>,
+        force: bool,
+    ) -> fdo::Result<()> {
+        let path = paths
+            .first()
+            .ok_or(fdo::Error::Failed("No path specified".to_string()))?;
         match self
             .legendary
-            .perform_cloud_sync(app_id, CloudSyncOperation::Download, force)
+            .perform_cloud_sync(emitter, app_id, CloudSyncOperation::Download, path, force)
             .await
         {
             Ok(_) => Ok(()),
@@ -362,10 +389,19 @@ impl EpicService {
         }
     }
 
-    pub async fn cloud_save_upload(&self, app_id: &str, force: bool) -> fdo::Result<()> {
+    pub async fn cloud_save_upload(
+        &self,
+        emitter: &SignalEmitter<'_>,
+        app_id: &str,
+        paths: Vec<CloudPath>,
+        force: bool,
+    ) -> fdo::Result<()> {
+        let path = paths
+            .first()
+            .ok_or(fdo::Error::Failed("No path specified".to_string()))?;
         match self
             .legendary
-            .perform_cloud_sync(app_id, CloudSyncOperation::Upload, force)
+            .perform_cloud_sync(emitter, app_id, CloudSyncOperation::Upload, path, force)
             .await
         {
             Ok(_) => Ok(()),
@@ -396,14 +432,20 @@ impl EpicService {
         } else if game_info.game.cloud_save_folder.is_some() {
             path = game_info.game.cloud_save_folder.unwrap();
         }
-        let cloud_path = CloudPath {
-            alias: "__default".to_string(),
-            pattern: "*".to_string(),
-            recursive: true,
-            platforms: [platform].to_vec(),
-            path,
-        };
-        Ok([cloud_path].to_vec())
+        let mut paths = Vec::new();
+        if !path.is_empty() {
+            paths.push(CloudPath {
+                alias: "__default".to_string(),
+                pattern: "*".to_string(),
+                recursive: true,
+                platforms: [platform].to_vec(),
+                path: save_paths::expand_path_variables(
+                    path,
+                    self.user_id.clone().unwrap_or_default(),
+                ),
+            });
+        }
+        Ok(paths)
     }
 
     pub async fn pre_launch_hook(

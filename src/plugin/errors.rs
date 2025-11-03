@@ -31,5 +31,5 @@ pub enum PluginError {
     NetworkRequired,
     #[zbus(error)]
     Generic(zbus::Error),
-    MoveItemCancelled
+    MoveItemCancelled,
 }
