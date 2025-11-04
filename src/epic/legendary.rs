@@ -20,12 +20,15 @@ use crate::{
             LegendaryInstalledGameResponse, LegendarySandboxType,
         },
     },
-    plugin::{errors::PluginError, library_provider::LibraryProviderSignals},
+    plugin::{
+        cloud_save_provider::CloudSaveProviderSignals, errors::PluginError,
+        library_provider::LibraryProviderSignals,
+    },
     types::{
         app::{
             AppEulaInformation, DownloadStage, InstallOption, LaunchOption, LaunchType, Platform,
         },
-        cloud_sync::CloudSyncOperation,
+        cloud_sync::{CloudPath, CloudSyncFailed, CloudSyncOperation},
         results::{EmptyResult, ResultWithError},
     },
     utils::{
@@ -45,11 +48,6 @@ use std::{path::Path, process::Stdio};
 use tokio::{process::Command, sync::mpsc::Receiver, time::Instant};
 use tokio_util::sync::CancellationToken;
 use zbus::object_server::SignalEmitter;
-
-pub fn get_wine_prefix_path(app_id: &str) -> ResultWithError<String> {
-    let prefix_path = format!("/test/{:?}", app_id.to_owned());
-    Ok(prefix_path.to_string())
-}
 
 lazy_static::lazy_static! {
     // Progress match regex
@@ -144,8 +142,10 @@ impl Legendary {
     /// Directly performs the sync
     pub async fn perform_cloud_sync(
         &self,
+        emitter: &SignalEmitter<'_>,
         app_id: &str,
         operation: CloudSyncOperation,
+        path: &CloudPath,
         conflict_resolution: bool,
     ) -> EmptyResult {
         info!(
@@ -153,11 +153,9 @@ impl Legendary {
             operation, app_id
         );
 
-        let wine_prefix_path = get_wine_prefix_path(app_id)?;
         let mut command = Command::new(&self.config.legendary_command);
         let mut command = command
-            .env("WINEPREFIX", wine_prefix_path)
-            .args(["sync-saves", app_id, "--accept-path", "-y"])
+            .args(["sync-saves", app_id, "--save-path", &path.path, "-y"])
             .stderr(Stdio::piped());
 
         match (&operation, conflict_resolution) {
@@ -198,11 +196,17 @@ impl Legendary {
                     let format = "%Y-%m-%d %H:%M:%S";
                     let cloud_date = NaiveDateTime::parse_from_str(&cloud[1], format)?.and_utc();
                     let local_date = NaiveDateTime::parse_from_str(&local[1], format)?.and_utc();
-                    log::info!(
-                        "TODO: Send {:?} and {:?} back to playserve",
-                        cloud_date,
-                        local_date
-                    );
+                    emitter
+                        .cloud_save_sync_failed(CloudSyncFailed {
+                            app_id: app_id.to_string(),
+                            error: PluginError::CloudQuota.to_string().to_string(),
+                            local: local_date.timestamp().try_into().unwrap_or_default(),
+                            remote: cloud_date.timestamp().try_into().unwrap_or_default(),
+                            usage: 0,
+                            quota: 0,
+                        })
+                        .await
+                        .ok();
                 }
                 _ => log::error!("Unable to find cloud and local timestamps in legendary output"),
             }

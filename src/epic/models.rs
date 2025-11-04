@@ -441,3 +441,10 @@ pub struct LegendaryNamespaceData {
     #[serde(alias = "recordType")]
     pub record_type: String,
 }
+
+#[derive(Serialize, Deserialize, Default, Debug, PartialEq)]
+pub struct LegendaryUserConfig {
+    pub account_id: String,
+    #[serde(rename = "displayName")]
+    pub display_name: String,
+}

@@ -1,20 +1,8 @@
 use crate::utils::date::optional_date_serializer;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::fmt::Display;
-use strum_macros::{Display, EnumString};
+use strum_macros::Display;
 use zbus::zvariant::{OwnedValue, SerializeDict, Type, Value};
-
-#[derive(Serialize, Deserialize, Debug, Type, Clone)]
-pub struct EulaEntry {
-    pub id: String,
-    pub name: String,
-    pub version: i32,
-    pub url: String,
-    pub body: String,
-    pub country: String,
-    pub language: String,
-}
 
 #[derive(Serialize, Deserialize, Debug, Type)]
 pub struct InstalledApp {
@@ -73,25 +61,6 @@ pub enum AppType {
     Beta,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, Type)]
-pub enum UpdateStage {
-    #[default]
-    #[serde(alias = "none")]
-    None,
-    #[serde(alias = "error")]
-    Error,
-    #[serde(alias = "preallocating")]
-    Preallocating,
-    #[serde(alias = "downloading")]
-    Downloading,
-    #[serde(alias = "verifying")]
-    Verifying,
-    #[serde(alias = "installing")]
-    Installing,
-    #[serde(alias = "done")]
-    Done,
-}
-
 #[derive(Serialize, Deserialize, Type, Debug)]
 pub struct ProviderItem {
     pub id: String,
@@ -119,30 +88,6 @@ pub struct LaunchOption {
     // on particular piece of hardware. Currently defined hardware tags:
     //   'steamdeck': when on steam deck the launch option will be used instead of the default
     pub hardware_tags: Vec<String>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Type)]
-pub struct InstallOptionDescription {
-    // Identifier for the install option. This is used to provide
-    // a common library-agnostic identifier for common install options.
-    //   “language”: the language of the game to install
-    //   “branch”: the branch of the game to install
-    //   “version”: the version of the game to install
-    //   “os”: the os platform of the game to install
-    //   “architecture”: the cpu architecture of the game to install
-    //   "verify": whether or not to verify the installation
-    pub id: String,
-    // The name of the provider-specific install option.
-    // (E.g. “version”, “os”, “language”, “low-violence”)
-    pub name: String,
-    // A human-readable string of the install option appropriate for showing
-    // in the UI. (E.g. “Version”, “Operating System”, etc.)
-    pub human_readable_name: String,
-    // Possible values that can be passed for this install option. For example,
-    //  if this option was for the version of the game to install, this list
-    // could be a list of versions of the game that are available to be installed
-    // (e.g. [“v2.1”, “v2.0”, “v1.5”, “v1.3”])
-    pub values: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Type, Value, OwnedValue, PartialEq, Copy, Clone)]
@@ -173,46 +118,6 @@ pub struct ArtworkMetadata {
     item_id: String,
     provider: String,
     images: Vec<ArtworkImage>,
-}
-
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Default, EnumString, Copy)]
-pub enum UserProviderStatus {
-    #[default]
-    Unauthorized,
-    PendingOnboarding,
-    Onboarded,
-    Requires2fa,
-    PendingSync,
-    Authorized,
-}
-
-impl Display for UserProviderStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let str = match self {
-            UserProviderStatus::Unauthorized => "Unauthorized",
-            UserProviderStatus::PendingOnboarding => "PendingOnboarding",
-            UserProviderStatus::Onboarded => "Onboarded",
-            UserProviderStatus::Requires2fa => "Requires2fa",
-            UserProviderStatus::PendingSync => "PendingSync",
-            UserProviderStatus::Authorized => "Authorized",
-        };
-
-        write!(f, "{}", str)
-    }
-}
-
-/// Current state as related to a provider for the user
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Default)]
-pub struct UserProviderState {
-    pub username: String,
-    pub identifier: String,
-    pub status: UserProviderStatus,
-    pub avatar: Option<String>,
-    /// Field used to determine if we should attempt another login to steam, this is to avoid too many requests
-    #[serde(default)]
-    pub last_requested_2fa: u64,
-    pub last_signed_in: u64,
-    pub user_id: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Type, Clone)]

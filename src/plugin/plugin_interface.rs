@@ -1,4 +1,4 @@
-use crate::constants::{PLUGIN_ID, MINIMUM_API_VERSION, NAME, VERSION};
+use crate::constants::{MINIMUM_API_VERSION, NAME, PLUGIN_ID, VERSION};
 use zbus::fdo;
 use zbus_macros::interface;
 

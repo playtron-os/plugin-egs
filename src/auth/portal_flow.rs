@@ -1,4 +1,4 @@
-use crate::constants::{ALLOWED_ROUTES};
+use crate::constants::ALLOWED_ROUTES;
 use crate::epic::service::EpicService;
 use zbus::{fdo, interface};
 pub struct PortalFlow {
