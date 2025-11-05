@@ -1,7 +1,7 @@
 use crate::constants;
 use crate::epic::config::LegendaryConfig;
 use crate::epic::overlay;
-use crate::types::app::{AppType, DownloadStage, InstalledApp, ProviderItem};
+use crate::types::app::{AppType, DownloadStage, InstalledApp, ProviderItem, ReleaseState};
 use zbus::fdo;
 use zbus::object_server::SignalEmitter;
 use zbus_macros::interface;
@@ -43,6 +43,8 @@ impl PluginDependencies {
             name: overlay::NAME.to_string(),
             provider: constants::LIBRARY_PROVIDER_ID.to_string(),
             app_type: AppType::Tool,
+            release_state: ReleaseState::Released,
+            release_date: 0,
         }
     }
 

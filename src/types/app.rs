@@ -61,12 +61,25 @@ pub enum AppType {
     Beta,
 }
 
+#[derive(Serialize, Deserialize, Debug, Default, Type)]
+pub enum ReleaseState {
+    #[default]
+    #[serde(alias = "released")]
+    Released = 0,
+    #[serde(alias = "preload_only")]
+    PreloadOnly = 1,
+    #[serde(alias = "unreleased")]
+    Unreleased = 2,
+}
+
 #[derive(Serialize, Deserialize, Type, Debug)]
 pub struct ProviderItem {
     pub id: String,
     pub name: String,
     pub provider: String,
     pub app_type: AppType,
+    pub release_state: ReleaseState,
+    pub release_date: u64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Type)]

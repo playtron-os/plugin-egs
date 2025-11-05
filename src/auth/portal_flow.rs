@@ -14,9 +14,15 @@ impl PortalFlow {
     /// extra could be any stringified data. A token, cookie or a
     /// more advanced JSON object. It is up to the plugin on how
     /// the payload will look like
-    async fn login(&mut self, url: String, extra: String) {
+    async fn login(&mut self, url: String, _extra: String) -> fdo::Result<()> {
         log::info!("Logging in with :{}", &url);
-        self.service.auth(Some(extra)).await.unwrap()
+        let parsed = url::Url::parse(&url).map_err(|err| fdo::Error::Failed(err.to_string()))?;
+        let code = parsed
+            .query_pairs()
+            .find(|(key, _)| key == "code")
+            .map(|(_, v)| v.to_string());
+        self.service.auth(code).await?;
+        Ok(())
     }
 
     /// The url used to initiate the auth flow.
@@ -48,6 +54,7 @@ impl PortalFlow {
         ALLOWED_ROUTES.to_vec()
     }
 
+    #[zbus(property)]
     fn user_agent(&self) -> &str {
         "EpicGamesLauncher"
     }
