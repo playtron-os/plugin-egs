@@ -37,6 +37,8 @@ fn legendary_app_to_provider_item(legendary_app: &LegendaryGameListInfo) -> Prov
         name: legendary_app.app_title.to_string(),
         provider: LIBRARY_PROVIDER_ID.to_string(),
         app_type: AppType::Game,
+        release_state: crate::types::app::ReleaseState::Released,
+        release_date: 0,
     }
 }
 #[derive(Clone)]
@@ -158,6 +160,8 @@ impl EpicService {
                     name: app_info.game.title.to_string(),
                     provider: LIBRARY_PROVIDER_ID.to_string(),
                     app_type: AppType::Game,
+                    release_state: crate::types::app::ReleaseState::Released,
+                    release_date: 0,
                 };
                 Ok(item)
             }

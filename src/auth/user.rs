@@ -33,7 +33,10 @@ impl User {
     ///   Identifier
     #[zbus(property)]
     async fn identifier(&self) -> &str {
-        self.service.user_id.as_ref().unwrap().as_str()
+        match self.service.user_id.as_ref() {
+            Some(id) => id,
+            None => "",
+        }
     }
 
     /// The status of the provider authentication
@@ -46,8 +49,8 @@ impl User {
     ///   Status
     #[zbus(property)]
     async fn status(&self) -> i32 {
-        let account = self.service.account.as_ref().unwrap().as_str();
-        if !account.is_empty() {
+        let account = self.service.account.as_ref();
+        if account.is_some() {
             ProviderStatus::Authorized as i32
         } else {
             ProviderStatus::Unauthorized as i32
@@ -65,7 +68,10 @@ impl User {
     ///   Username
     #[zbus(property)]
     async fn username(&self) -> &str {
-        &self.service.account.as_ref().unwrap().as_str()
+        match self.service.account.as_ref() {
+            Some(id) => id,
+            None => "",
+        }
     }
 
     /// TODO Undocumented
