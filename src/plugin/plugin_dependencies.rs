@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 use crate::constants;
 use crate::epic::config::LegendaryConfig;
 use crate::epic::overlay;
