@@ -73,13 +73,10 @@ pub async fn install(
         if let Err(err) = handle_download(out, emitter.clone()).await {
             log::error!("Error during epic overlay download: err:{err:?}");
 
-            PluginDependenciesSignals::install_failed(
-                &emitter,
-                PROVIDER_APP_ID,
-                "Unexpected server response",
-            )
-            .await
-            .unwrap();
+            emitter
+                .install_failed(PROVIDER_APP_ID, "Unexpected server response")
+                .await
+                .unwrap();
             return Err(PluginError::DownloadFailed);
         }
         Ok(())
@@ -136,17 +133,18 @@ async fn handle_download(out: BufReader<ChildStderr>, emitter: SignalEmitter<'_>
             && install_config.download_size != 0
             && install_config.expected_disk_size != 0
         {
-            PluginDependenciesSignals::install_started(
-                &emitter,
-                PROVIDER_APP_ID,
-                "1.0",
-                &install_config.install_folder,
-                install_config.download_size,
-                true,
-                "windows",
-            )
-            .await
-            .unwrap();
+            emitter
+                .install_started(
+                    PROVIDER_APP_ID,
+                    "1.0",
+                    &install_config.install_folder,
+                    install_config.download_size,
+                    true,
+                    "windows",
+                    "en-US",
+                )
+                .await
+                .ok();
         }
         if let Ok(written_bytes) = parse_float("Written: ", None, &line) {
             downloaded_bytes = megabytes_to_bytes(written_bytes);
@@ -169,16 +167,16 @@ async fn handle_download(out: BufReader<ChildStderr>, emitter: SignalEmitter<'_>
                 empty_queue_warning_count = 0;
                 current_progress = progress;
 
-                PluginDependenciesSignals::install_progressed(
-                    &emitter,
-                    PROVIDER_APP_ID,
-                    DownloadStage::Downloading,
-                    downloaded_bytes,
-                    install_config.download_size,
-                    progress.into(),
-                )
-                .await
-                .unwrap();
+                emitter
+                    .install_progressed(
+                        PROVIDER_APP_ID,
+                        DownloadStage::Downloading,
+                        downloaded_bytes,
+                        install_config.download_size,
+                        progress.into(),
+                    )
+                    .await
+                    .ok();
 
                 log::info!(
                     "Epic Overlay Download: progress:{}, stage:{:?}",
@@ -194,9 +192,7 @@ async fn handle_download(out: BufReader<ChildStderr>, emitter: SignalEmitter<'_>
             || line.contains("Installed version is up to date")
         {
             log::info!("Finished downloading epic overlay");
-            PluginDependenciesSignals::install_completed(&emitter, PROVIDER_APP_ID)
-                .await
-                .unwrap();
+            emitter.install_completed(PROVIDER_APP_ID).await.ok();
             break;
         }
 

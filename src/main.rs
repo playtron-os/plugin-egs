@@ -21,7 +21,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     log::info!("Starting Playtron Plugin");
 
-    let mut epic_service = EpicService::new();
+    let epic_service = EpicService::new();
     epic_service.initialize().await?;
     build_connection(epic_service).await?;
     register_plugin().await;

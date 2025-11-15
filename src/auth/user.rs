@@ -1,11 +1,43 @@
 use zbus::object_server::SignalEmitter;
 use zbus::{fdo, interface};
 
+use crate::constants::CLIENT_PATH;
 use crate::epic::service::EpicService;
+use crate::plugin::dbus::CONNECTION;
 use crate::types::app::ProviderStatus;
+use crate::types::results::EmptyResult;
 
 pub struct User {
     pub service: EpicService,
+}
+
+impl User {
+    pub async fn emit_new_user_state_update() -> EmptyResult {
+        let user_iface = {
+            let connection = CONNECTION.lock().await;
+            let Some(con) = connection.as_ref() else {
+                return Ok(());
+            };
+            con.object_server()
+                .interface::<_, User>(CLIENT_PATH)
+                .await?
+        };
+
+        let interface = user_iface.get().await;
+        interface
+            .avatar_changed(user_iface.signal_emitter())
+            .await?;
+        interface
+            .username_changed(user_iface.signal_emitter())
+            .await?;
+        interface
+            .identifier_changed(user_iface.signal_emitter())
+            .await?;
+        interface
+            .status_changed(user_iface.signal_emitter())
+            .await?;
+        Ok(())
+    }
 }
 
 #[interface(name = "one.playtron.auth.User")]
@@ -32,10 +64,10 @@ impl User {
     ///   one.playtron.auth.User \
     ///   Identifier
     #[zbus(property)]
-    async fn identifier(&self) -> &str {
-        match self.service.user_id.as_ref() {
+    async fn identifier(&self) -> String {
+        match self.service.user_data.lock().user_id.clone() {
             Some(id) => id,
-            None => "",
+            None => "".into(),
         }
     }
 
@@ -49,8 +81,8 @@ impl User {
     ///   Status
     #[zbus(property)]
     async fn status(&self) -> i32 {
-        let account = self.service.account.as_ref();
-        if account.is_some() {
+        let lock = self.service.user_data.lock();
+        if lock.account.is_some() {
             ProviderStatus::Authorized as i32
         } else {
             ProviderStatus::Unauthorized as i32
@@ -67,10 +99,10 @@ impl User {
     ///   one.playtron.auth.User \
     ///   Username
     #[zbus(property)]
-    async fn username(&self) -> &str {
-        match self.service.account.as_ref() {
+    async fn username(&self) -> String {
+        match self.service.user_data.lock().account.clone() {
             Some(id) => id,
-            None => "",
+            None => "".into(),
         }
     }
 

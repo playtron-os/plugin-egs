@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 use crate::constants;
 use crate::epic::config::LegendaryConfig;
 use crate::epic::overlay;
@@ -66,6 +68,7 @@ impl PluginDependencies {
         total_download_size: u64,
         requires_internet_connection: bool,
         os: &str,
+        language: &str,
     ) -> zbus::Result<()>;
 
     /// InstallCompleted signal

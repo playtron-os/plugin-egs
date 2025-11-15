@@ -1,3 +1,4 @@
+use crate::auth::user::User;
 use crate::constants::LIBRARY_PROVIDER_ID;
 use crate::epic::models::LegendaryUserConfig;
 use crate::epic::overlay;
@@ -20,6 +21,8 @@ use futures::StreamExt;
 use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::time::Duration;
 use tokio::fs;
 use tokio_util::sync::CancellationToken;
 use zbus::fdo;
@@ -29,6 +32,12 @@ use super::common::read_metadata_from_cache;
 
 lazy_static::lazy_static! {
     static ref MOVE_CANCELLATION_TOKEN: Mutex<Option<CancellationToken>> = Mutex::default();
+}
+
+#[derive(Default)]
+pub struct UserData {
+    pub user_id: Option<String>,
+    pub account: Option<String>,
 }
 
 fn legendary_app_to_provider_item(legendary_app: &LegendaryGameListInfo) -> ProviderItem {
@@ -45,8 +54,7 @@ fn legendary_app_to_provider_item(legendary_app: &LegendaryGameListInfo) -> Prov
 pub struct EpicService {
     config: LegendaryConfig,
     legendary: Legendary,
-    pub user_id: Option<String>,
-    pub account: Option<String>,
+    pub user_data: Arc<Mutex<UserData>>,
 }
 
 impl EpicService {
@@ -55,25 +63,24 @@ impl EpicService {
         Self {
             config: config.clone(),
             legendary: Legendary::new(Some(config)),
-            user_id: None,
-            account: None,
+            user_data: Arc::default(),
         }
     }
 
-    pub async fn auth(&mut self, authorization_code: Option<String>) -> fdo::Result<()> {
+    pub async fn auth(&self, authorization_code: Option<String>) -> fdo::Result<()> {
         let account = self.legendary.auth(authorization_code).await;
         if account.is_err() {
             return Err(fdo::Error::Failed("Failed to authenticate".to_string()));
         }
+
         self.set_account().await;
         Ok(())
     }
 
-    pub async fn initialize(&mut self) -> Result<(), String> {
+    pub async fn initialize(&self) -> Result<(), String> {
         let result: Result<(), String> = require_legendary(&self.config.legendary_command)
             .await
             .map_err(|e| e.to_string());
-        self.set_account().await;
         result
     }
 
@@ -86,17 +93,29 @@ impl EpicService {
         Ok(config)
     }
 
-    pub async fn set_account(&mut self) {
-        if let Ok(data) = self.get_user_json().await {
-            self.user_id = Some(data.account_id);
-            self.account = Some(data.display_name);
-        } else {
-            self.user_id = None;
-            self.account = None;
+    pub async fn set_account(&self) {
+        match self.get_user_json().await {
+            Ok(data) => {
+                let mut lock = self.user_data.lock();
+                lock.user_id = Some(data.account_id);
+                lock.account = Some(data.display_name);
+            }
+            Err(err) => {
+                log::error!("Failed to load user data {err}");
+                let mut lock = self.user_data.lock();
+                lock.user_id = None;
+                lock.account = None;
+            }
         }
+        tokio::spawn(async {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            if let Err(err) = User::emit_new_user_state_update().await {
+                log::error!("Failed to update user account data {err:?}");
+            }
+        });
     }
 
-    pub async fn logout(&mut self) -> EmptyResult {
+    pub async fn logout(&self) -> EmptyResult {
         match self.legendary.logout().await {
             Ok(_) => {
                 self.set_account().await;
@@ -437,16 +456,14 @@ impl EpicService {
             path = game_info.game.cloud_save_folder.unwrap();
         }
         let mut paths = Vec::new();
+        let user_id = self.user_data.lock().user_id.clone();
         if !path.is_empty() {
             paths.push(CloudPath {
                 alias: "__default".to_string(),
                 pattern: "*".to_string(),
                 recursive: true,
                 platforms: [platform].to_vec(),
-                path: save_paths::expand_path_variables(
-                    path,
-                    self.user_id.clone().unwrap_or_default(),
-                ),
+                path: save_paths::expand_path_variables(path, user_id.unwrap_or_default()),
             });
         }
         Ok(paths)
