@@ -246,7 +246,7 @@ impl Legendary {
     pub async fn get_launch_parameters(
         &self,
         app_id: &str,
-        params: HashMap<String, String>,
+        params: HashMap<String, zbus::zvariant::Value<'_>>,
     ) -> ResultWithError<LegendaryLaunchParams> {
         let mut reaper = ReaperProcess::new(&self.config.legendary_command);
         let mut args: Vec<&str> = Vec::from([
@@ -258,8 +258,8 @@ impl Legendary {
             "--no-wine",
         ]);
         if params.contains_key("language") {
-            let language = params.get("language").unwrap().as_str();
-            if let Some(config_value) = LANG_CONFIG_VALUES.get(language) {
+            let language = params.get("language").unwrap().to_string();
+            if let Some(config_value) = LANG_CONFIG_VALUES.get(language.as_str()) {
                 args.push("--language");
                 args.push(config_value);
             }
@@ -276,7 +276,7 @@ impl Legendary {
     pub async fn get_launch_options(
         &self,
         app_id: String,
-        params: HashMap<String, String>,
+        params: HashMap<String, zbus::zvariant::Value<'_>>,
     ) -> ResultWithError<Vec<LaunchOption>> {
         let launch_params = self.get_launch_parameters(&app_id, params).await?;
         let game_info = self.info(&app_id).await?;
@@ -383,7 +383,7 @@ impl Legendary {
             arguments.push("--repair-and-update".to_owned());
         }
 
-        if let Some(language) = options.language {
+        if let Some(language) = options.language.clone() {
             game_info
                 .get_install_tags_for_language(language)
                 .iter()
@@ -412,6 +412,7 @@ impl Legendary {
         let emitter = emitter.into_owned();
         let install_directory = Path::new(&base_path).join(folder_name);
         let total_download_size = game_info.get_download_size();
+        let language = options.language.unwrap_or("en-US".into());
         tokio::spawn(async move {
             LibraryProviderSignals::install_started(
                 &emitter,
@@ -421,6 +422,7 @@ impl Legendary {
                 total_download_size,
                 false,
                 "windows".to_owned(),
+                language,
             )
             .await
             .unwrap();
