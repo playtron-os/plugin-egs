@@ -134,7 +134,7 @@ FILENAME ?= $(NAME)-$(VERSION)-1.$(ARCH).rpm
 DIRECTORY ?= $(ARCH)
 .PHONY: publish
 publish: dist
-	aws s3 cp dist/$(FILENAME) $(BUCKET_URL)/$(DIRECTORY)/$(FILENAME)
-	aws s3 cp --recursive $(BUCKET_URL)/$(DIRECTORY) $(DIRECTORY)
-	createrepo --update $(DIRECTORY)
-	aws s3 sync $(DIRECTORY) $(BUCKET_URL)/$(DIRECTORY)
+# 	aws s3 cp dist/$(FILENAME) $(BUCKET_URL)/$(DIRECTORY)/$(FILENAME)
+# 	aws s3 cp --recursive $(BUCKET_URL)/$(DIRECTORY) $(DIRECTORY)
+# 	createrepo --update $(DIRECTORY)
+# 	aws s3 sync $(DIRECTORY) $(BUCKET_URL)/$(DIRECTORY)
