@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 use crate::constants::{LIBRARY_PROVIDER_ID, LIBRARY_PROVIDER_NAME};
 use crate::epic::service::EpicService;
 use crate::types::app::{
@@ -62,6 +64,7 @@ impl LibraryProvider {
         total_download_size: u64,
         requires_internet_connection: bool,
         os: String,
+        language: String,
     ) -> zbus::Result<()>;
 
     /// Emitted when a game’s installation step is completed.
@@ -244,7 +247,7 @@ impl LibraryProvider {
     async fn get_launch_options(
         &self,
         app_id: &str,
-        params: std::collections::HashMap<String, String>,
+        params: std::collections::HashMap<String, zbus::zvariant::Value<'_>>,
     ) -> fdo::Result<Vec<LaunchOption>> {
         self.service.get_launch_options(app_id, params).await
     }

@@ -22,7 +22,6 @@ use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Duration;
 use tokio::fs;
 use tokio_util::sync::CancellationToken;
 use zbus::fdo;
@@ -107,12 +106,9 @@ impl EpicService {
                 lock.account = None;
             }
         }
-        tokio::spawn(async {
-            tokio::time::sleep(Duration::from_millis(50)).await;
-            if let Err(err) = User::emit_new_user_state_update().await {
-                log::error!("Failed to update user account data {err:?}");
-            }
-        });
+        if let Err(err) = User::emit_new_user_state_update().await {
+            log::error!("Failed to update user account data {err:?}");
+        }
     }
 
     pub async fn logout(&self) -> EmptyResult {
@@ -283,7 +279,7 @@ impl EpicService {
     pub async fn get_launch_options(
         &self,
         app_id: &str,
-        params: HashMap<String, String>,
+        params: HashMap<String, zbus::zvariant::Value<'_>>,
     ) -> fdo::Result<Vec<LaunchOption>> {
         match self
             .legendary
@@ -493,7 +489,10 @@ impl EpicService {
         overlay::enable_for_prefix(&self.config.clone(), &prefix_path).await?;
 
         let game_meta: LegendaryGameListInfo = read_metadata_from_cache(app_id).await.unwrap();
-        if game_meta.get_partner_link_type() == "ubisoft" {
+        if game_meta
+            .get_partner_link_type()
+            .is_some_and(|link| link == "ubisoft")
+        {
             let status = self.legendary.uplay_link_status().await?;
             let is_game_redeemable = status.redeemable.iter().any(|game| game.app_name == app_id);
             if is_game_redeemable {

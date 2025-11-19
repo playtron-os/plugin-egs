@@ -119,8 +119,17 @@ impl User {
     ///   /one/playtron/EpicGames/LegendaryClient0 \
     ///   one.playtron.auth.User \
     ///   ChangeUser "s" "PlaytronTest1"
-    fn change_user(&self, user_id: String) -> fdo::Result<bool> {
+    async fn change_user(&self, user_id: String) -> fdo::Result<bool> {
         log::info!("Changing user to {}", user_id);
+        if self
+            .service
+            .get_user_json()
+            .await
+            .is_ok_and(|user| user.account_id == user_id)
+        {
+            self.service.set_account().await;
+            return Ok(true);
+        }
         Ok(false)
     }
 

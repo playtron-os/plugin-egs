@@ -146,14 +146,12 @@ impl LegendaryGameListInfo {
             .value
     }
 
-    pub fn get_partner_link_type(&self) -> String {
+    pub fn get_partner_link_type(&self) -> Option<String> {
         self.metadata
             .custom_attributes
-            .clone()
-            .unwrap()
-            .partner_link_type
-            .unwrap()
-            .value
+            .as_ref()
+            .and_then(|attrs| attrs.partner_link_type.as_ref())
+            .map(|link_type| link_type.value.clone())
     }
 
     // pub fn get_cloud_save_folder(&self) -> String {
