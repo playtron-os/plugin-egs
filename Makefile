@@ -134,13 +134,7 @@ FILENAME ?= $(NAME)-$(VERSION)-1.$(ARCH).rpm
 DIRECTORY ?= $(ARCH)
 .PHONY: publish
 publish: dist
-	# Upload provided file to s3
 	aws s3 cp dist/$(FILENAME) $(BUCKET_URL)/$(DIRECTORY)/$(FILENAME)
-
-	# Pull entire build directory from s3, necessary to run createrepo
 	aws s3 cp --recursive $(BUCKET_URL)/$(DIRECTORY) $(DIRECTORY)
-
 	createrepo --update $(DIRECTORY)
-
-	# Sync directory back to S3 with updated repo indexing
 	aws s3 sync $(DIRECTORY) $(BUCKET_URL)/$(DIRECTORY)
