@@ -216,13 +216,15 @@ impl Legendary {
     }
 
     /// Gets the legendary client status
-    pub async fn status(&self) -> ResultWithError<EpicStatusResponse> {
+    pub async fn status(&self, offline: bool) -> ResultWithError<EpicStatusResponse> {
         require_legendary(&self.config.legendary_command).await?;
-        let mut response: EpicStatusResponse = execute_legendary_handle_auth_json(
-            self.config.legendary_command.clone(),
-            ["status", "--json"],
-        )
-        .await?;
+        let mut args = vec!["status", "--json"];
+        if offline {
+            args.push("--offline");
+        }
+        let mut response: EpicStatusResponse =
+            execute_legendary_handle_auth_json(self.config.legendary_command.clone(), &args)
+                .await?;
         if response.account == "<not logged in>" {
             response.account = String::new();
         }
@@ -230,11 +232,14 @@ impl Legendary {
     }
 
     /// Gets the info about a certain app using the legendary client
-    pub async fn info(&self, app_id: &str) -> ResultWithError<LegendaryGameInfo> {
+    pub async fn info(&self, app_id: &str, offline: bool) -> ResultWithError<LegendaryGameInfo> {
         info!("Legendary game info called for app:{}", app_id);
-
+        let mut args = vec!["info", app_id, "--json"];
+        if offline {
+            args.push("--offline");
+        }
         let mut reaper = ReaperProcess::new(&self.config.legendary_command);
-        reaper.command.args(["info", app_id, "--json"]);
+        reaper.command.args(args);
         let response = reaper
             .execute_with_output_json(Some(check_invalid_legendary_response))
             .await?;
@@ -264,6 +269,11 @@ impl Legendary {
                 args.push(config_value);
             }
         }
+        if let Some(value) = params.get("offline") {
+            if value.downcast_ref::<bool>().is_ok_and(|offline| offline) {
+                args.push("--offline");
+            }
+        }
         reaper.command.args(args);
         let response = reaper
             .execute_with_output_json(Some(check_invalid_legendary_response))
@@ -279,7 +289,7 @@ impl Legendary {
         params: HashMap<String, zbus::zvariant::Value<'_>>,
     ) -> ResultWithError<Vec<LaunchOption>> {
         let launch_params = self.get_launch_parameters(&app_id, params).await?;
-        let game_info = self.info(&app_id).await?;
+        let game_info = self.info(&app_id, true).await?;
         let mut launch_options: Vec<LaunchOption> = Vec::new();
         let arguments = [
             launch_params.game_parameters.join(" "),
@@ -323,7 +333,7 @@ impl Legendary {
         &self,
         app_id: &str,
     ) -> ResultWithError<Option<LegendaryGameManifestPrerequisites>> {
-        let game_info = self.info(app_id).await?;
+        let game_info = self.info(app_id, true).await?;
         Ok(game_info.manifest.prerequisites)
     }
 
@@ -355,7 +365,7 @@ impl Legendary {
 
         let folder_name = cached_meta.get_install_folder();
 
-        let game_info: LegendaryGameInfo = self.info(&app_id).await.unwrap();
+        let game_info: LegendaryGameInfo = self.info(&app_id, false).await.unwrap();
         let mut arguments: Vec<String> = vec![
             "install".to_owned(),
             app_id.to_string(),
