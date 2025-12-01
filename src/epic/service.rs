@@ -84,7 +84,7 @@ impl EpicService {
     }
 
     pub async fn get_user_json(&self) -> ResultWithError<LegendaryUserConfig> {
-        let status = self.legendary.status().await?;
+        let status = self.legendary.status(true).await?;
         let dir = PathBuf::from(status.config_directory);
         let user_location = dir.join("user.json");
         let data = tokio::fs::read_to_string(user_location).await?;
@@ -106,9 +106,11 @@ impl EpicService {
                 lock.account = None;
             }
         }
-        if let Err(err) = User::emit_new_user_state_update().await {
-            log::error!("Failed to update user account data {err:?}");
-        }
+        tokio::spawn(async {
+            if let Err(err) = User::emit_new_user_state_update().await {
+                log::error!("Failed to update user account data {err:?}");
+            }
+        });
     }
 
     pub async fn logout(&self) -> EmptyResult {
@@ -122,7 +124,7 @@ impl EpicService {
     }
 
     pub async fn get_download_size(&self, app_id: &str) -> ResultWithError<u64> {
-        let game_info = self.legendary.info(app_id).await?;
+        let game_info = self.legendary.info(app_id, false).await?;
         Ok(game_info.get_download_size())
     }
 
@@ -168,7 +170,7 @@ impl EpicService {
     }
 
     pub async fn get_provider_item(&self, app_id: &str) -> fdo::Result<ProviderItem> {
-        match self.legendary.info(app_id).await {
+        match self.legendary.info(app_id, false).await {
             Ok(app_info) => {
                 let item = ProviderItem {
                     id: app_info.game.app_name.clone(),
@@ -212,7 +214,7 @@ impl EpicService {
             .into_values()
             .map(|n| n.sandbox_name)
             .collect();
-        let game_info = self.legendary.info(app_id).await?;
+        let game_info = self.legendary.info(app_id, false).await?;
         let languages = game_info.get_languages();
 
         Ok(vec![
@@ -441,7 +443,7 @@ impl EpicService {
         app_id: String,
         platform: String,
     ) -> fdo::Result<Vec<CloudPath>> {
-        let game_info = match self.legendary.info(&app_id).await {
+        let game_info = match self.legendary.info(&app_id, false).await {
             Ok(game_info) => game_info,
             Err(e) => return Err(fdo::Error::Failed(e.to_string())),
         };
@@ -476,17 +478,17 @@ impl EpicService {
             using_offline_mode
         );
 
-        let game_info = self.legendary.info(app_id).await?;
+        let game_info = self.legendary.info(app_id, using_offline_mode).await?;
 
         let install_path = game_info.install.unwrap().install_path;
         let prefix_path = PathBuf::from(install_path)
             .parent()
-            .unwrap()
-            .parent()
-            .unwrap()
-            .join("wine_prefixes")
-            .join(app_id);
-        overlay::enable_for_prefix(&self.config.clone(), &prefix_path).await?;
+            .and_then(|p| p.parent())
+            .and_then(|p| p.parent())
+            .map(|p| p.join("wine_prefixes").join("epicgames").join(app_id));
+        if let Some(prefix_path) = prefix_path {
+            overlay::enable_for_prefix(&self.config.clone(), &prefix_path).await?;
+        }
 
         let game_meta: LegendaryGameListInfo = read_metadata_from_cache(app_id).await.unwrap();
         if game_meta
