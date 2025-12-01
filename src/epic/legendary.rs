@@ -47,7 +47,7 @@ use std::{collections::HashMap, sync::Arc};
 use std::{path::Path, process::Stdio};
 use tokio::{process::Command, sync::mpsc::Receiver, time::Instant};
 use tokio_util::sync::CancellationToken;
-use zbus::object_server::SignalEmitter;
+use zbus::{object_server::SignalEmitter, DBusError};
 
 lazy_static::lazy_static! {
     // Progress match regex
@@ -199,7 +199,7 @@ impl Legendary {
                     emitter
                         .cloud_save_sync_failed(CloudSyncFailed {
                             app_id: app_id.to_string(),
-                            error: PluginError::CloudQuota.to_string().to_string(),
+                            error: PluginError::CloudConflict.name().to_string(),
                             local: local_date.timestamp().try_into().unwrap_or_default(),
                             remote: cloud_date.timestamp().try_into().unwrap_or_default(),
                             usage: 0,
