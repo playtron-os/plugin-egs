@@ -262,9 +262,11 @@ impl Legendary {
             "--skip-version-check",
             "--no-wine",
         ]);
-        if params.contains_key("language") {
-            let language = params.get("language").unwrap().to_string();
-            if let Some(config_value) = LANG_CONFIG_VALUES.get(language.as_str()) {
+        if let Some(language) = params
+            .get("language")
+            .and_then(|language| language.downcast_ref::<&str>().ok())
+        {
+            if let Some(config_value) = LANG_CONFIG_VALUES.get(language) {
                 args.push("--language");
                 args.push(config_value);
             }
