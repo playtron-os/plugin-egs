@@ -84,9 +84,10 @@ impl EpicService {
     }
 
     pub async fn get_user_json(&self) -> ResultWithError<LegendaryUserConfig> {
-        let status = self.legendary.status(true).await?;
-        let dir = PathBuf::from(status.config_directory);
-        let user_location = dir.join("user.json");
+        let config_home = std::env::var("XDG_CONFIG_HOME")
+            .or_else(|_err| std::env::var("HOME").map(|var| format!("{var}/.config")))?;
+        let dir: PathBuf = config_home.into();
+        let user_location = dir.join("legendary/user.json");
         let data = tokio::fs::read_to_string(user_location).await?;
         let config = serde_json::from_str::<LegendaryUserConfig>(&data)?;
         Ok(config)

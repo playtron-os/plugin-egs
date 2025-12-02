@@ -363,18 +363,6 @@ pub struct LegendaryInstalledGameResponse {
     pub namespace: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
-/// Response to epic status request
-pub struct EpicStatusResponse {
-    /// Account will be the display name of the epic account, and if it is empty, it means the user is logged out
-    pub account: String,
-    pub games_available: i32,
-    pub games_installed: i32,
-    pub egl_sync_enabled: bool,
-    pub config_directory: String,
-}
-
 #[derive(PartialEq)]
 pub enum DownloadSizeType {
     Disk,

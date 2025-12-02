@@ -16,7 +16,7 @@ use crate::{
         },
         constants::LANG_CONFIG_VALUES,
         models::{
-            DownloadSizeType, EpicStatusResponse, LegendaryGameInfo, LegendaryGameListInfo,
+            DownloadSizeType, LegendaryGameInfo, LegendaryGameListInfo,
             LegendaryInstalledGameResponse, LegendarySandboxType,
         },
     },
@@ -213,22 +213,6 @@ impl Legendary {
         }
 
         Ok(())
-    }
-
-    /// Gets the legendary client status
-    pub async fn status(&self, offline: bool) -> ResultWithError<EpicStatusResponse> {
-        require_legendary(&self.config.legendary_command).await?;
-        let mut args = vec!["status", "--json"];
-        if offline {
-            args.push("--offline");
-        }
-        let mut response: EpicStatusResponse =
-            execute_legendary_handle_auth_json(self.config.legendary_command.clone(), &args)
-                .await?;
-        if response.account == "<not logged in>" {
-            response.account = String::new();
-        }
-        Ok(response)
     }
 
     /// Gets the info about a certain app using the legendary client
