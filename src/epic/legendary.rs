@@ -604,6 +604,15 @@ impl Legendary {
         Ok(())
     }
 
+
+    pub async fn verify_auth(&self) -> EmptyResult {
+        execute_legendary_handle_auth_raw(
+            self.config.legendary_command.clone(),
+            ["get-token", "--bearer"]
+        ).await?;
+        Ok(())
+    }
+
     /// Uninstall an app
     pub async fn uninstall(&self, app_id: &str) -> EmptyResult {
         info!("Running legendary uninstall for app:{}", app_id);

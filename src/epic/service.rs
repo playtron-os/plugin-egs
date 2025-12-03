@@ -7,6 +7,7 @@ use crate::epic::{
     models::LegendaryGameListInfo,
 };
 
+use crate::plugin::errors::PluginError;
 use crate::plugin::library_provider::LibraryProviderSignals;
 use crate::types::app::{
     AppEulaInformation, AppType, InstallOption, InstallScript, InstalledApp, ItemMetadata,
@@ -93,7 +94,20 @@ impl EpicService {
         Ok(config)
     }
 
-    pub async fn set_account(&self) {
+    async fn is_correct_auth(&self) -> bool {
+        if let Err(err) = self.legendary.verify_auth().await {
+            if err
+                .downcast::<PluginError>()
+                .is_ok_and(|err| !matches!(*err, PluginError::NetworkRequired))
+            {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    pub async fn set_account(&self) -> bool {
         match self.get_user_json().await {
             Ok(data) => {
                 let mut lock = self.user_data.lock();
@@ -107,11 +121,18 @@ impl EpicService {
                 lock.account = None;
             }
         }
+        if !self.is_correct_auth().await {
+            let mut lock = self.user_data.lock();
+            lock.user_id = None;
+            lock.account = None;
+            return false;
+        }
         tokio::spawn(async {
             if let Err(err) = User::emit_new_user_state_update().await {
                 log::error!("Failed to update user account data {err:?}");
             }
         });
+        true
     }
 
     pub async fn logout(&self) -> EmptyResult {
