@@ -506,8 +506,8 @@ impl EpicService {
         Ok(Vec::new())
     }
 
-    pub async fn get_item_metadata(&self, app_id: &str) -> String {
-        let game_meta: LegendaryGameListInfo = read_metadata_from_cache(app_id).await.unwrap();
+    pub async fn get_item_metadata(&self, app_id: &str) -> ResultWithError<String> {
+        let game_meta: LegendaryGameListInfo = read_metadata_from_cache(app_id).await?;
         let namespace = game_meta.metadata.namespace.to_owned();
         let images: Vec<PlaytronImage> = game_meta.get_images();
         let app_type: Option<PlaytronAppType> = game_meta.get_app_type();
@@ -516,7 +516,7 @@ impl EpicService {
             id: app_id.to_owned(),
             name: game_meta.app_title.to_owned(),
             slug: app_id.to_owned(),
-            app_type: app_type.unwrap(),
+            app_type: app_type.ok_or("App type not found")?,
             providers: vec![PlaytronProvider {
                 namespace,
                 provider: LIBRARY_PROVIDER_ID.to_string(),
@@ -534,6 +534,6 @@ impl EpicService {
             tags: vec![],
             images,
         };
-        serde_json::to_string(&item_meta).unwrap()
+        Ok(serde_json::to_string(&item_meta)?)
     }
 }

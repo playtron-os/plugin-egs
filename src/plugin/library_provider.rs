@@ -254,7 +254,10 @@ impl LibraryProvider {
 
     async fn get_item_metadata(&self, app_id: &str) -> fdo::Result<String> {
         log::info!("Getting item metadata for {}", app_id);
-        Ok(self.service.get_item_metadata(app_id).await)
+        self.service.get_item_metadata(app_id).await.map_err(|e| {
+            log::error!("Failed to get item metadata for {}: {}", app_id, e);
+            fdo::Error::Failed(format!("Failed to get item metadata: {}", e))
+        })
     }
 
     /// Start installing the app with the given provider app id to the given
