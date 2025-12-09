@@ -127,8 +127,8 @@ impl User {
             .await
             .is_ok_and(|user| user.account_id == user_id)
         {
-            self.service.set_account().await;
-            return Ok(true);
+            let success = self.service.set_account().await;
+            return Ok(success);
         }
         Ok(false)
     }
