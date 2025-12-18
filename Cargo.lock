@@ -1084,6 +1084,7 @@ dependencies = [
  "rsa",
  "serde",
  "serde_json",
+ "shlex",
  "strum",
  "strum_macros",
  "thiserror",
