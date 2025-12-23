@@ -35,8 +35,11 @@ pub async fn move_folder_with_progress(
 ) -> Pin<Box<impl Stream<Item = U8Result>>> {
     info!("Moving folder from: {} to: {}", from, to);
 
-    let from = String::from(from);
+    let mut from = String::from(from);
     let to = String::from(to);
+    if !from.ends_with('/') {
+        from.push('/');
+    }
 
     let stream = try_stream! {
         // ensure the new folder exists

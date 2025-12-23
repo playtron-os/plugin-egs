@@ -277,15 +277,20 @@ impl Legendary {
         let launch_params = self.get_launch_parameters(&app_id, params).await?;
         let game_info = self.info(&app_id, true).await?;
         let mut launch_options: Vec<LaunchOption> = Vec::new();
-        let arguments = [
-            launch_params.game_parameters.join(" "),
-            launch_params.egl_parameters.join(" "),
-            launch_params.user_parameters.join(" "),
-        ];
+
+        let options_iter: Vec<String> = launch_params
+            .game_parameters
+            .iter()
+            .chain(&launch_params.egl_parameters)
+            .chain(&launch_params.user_parameters)
+            .cloned()
+            .collect();
+
+        let arguments = shlex::try_join(options_iter.iter().map(|s| s.as_str()))?;
         launch_options.push(LaunchOption {
             description: "Launch".to_string(),
             executable: launch_params.game_executable.clone(),
-            arguments: arguments.join(" "),
+            arguments: arguments.clone(),
             working_directory: launch_params.working_directory.clone(),
             environment: [].to_vec(),
             launch_type: LaunchType::Game,
@@ -297,13 +302,20 @@ impl Legendary {
             .launch_options
             .iter()
             .map(|launch_option| {
-                let launch_option_arguments =
-                    [arguments.join(" "), launch_option.parameters.clone()];
+                let options = shlex::split(&launch_option.parameters).unwrap_or_default();
+                let launch_option_iter = options_iter.iter().chain(&options).map(|s| s.as_str());
+                let launch_option_arguments = match shlex::try_join(launch_option_iter) {
+                    Ok(opts) => opts,
+                    Err(err) => {
+                        log::error!("Failed to join launch options {err}");
+                        String::new()
+                    }
+                };
 
                 launch_options.push(LaunchOption {
                     description: launch_option.name.clone(),
                     executable: launch_params.game_executable.clone(),
-                    arguments: launch_option_arguments.join(" "),
+                    arguments: launch_option_arguments,
                     working_directory: "".to_string(),
                     environment: [].to_vec(),
                     launch_type: LaunchType::Game,
@@ -604,12 +616,12 @@ impl Legendary {
         Ok(())
     }
 
-
     pub async fn verify_auth(&self) -> EmptyResult {
         execute_legendary_handle_auth_raw(
             self.config.legendary_command.clone(),
-            ["get-token", "--bearer"]
-        ).await?;
+            ["get-token", "--bearer"],
+        )
+        .await?;
         Ok(())
     }
 
