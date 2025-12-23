@@ -1062,7 +1062,7 @@ dependencies = [
 
 [[package]]
 name = "plugin-egs"
-version = "1.1.4"
+version = "1.2.0"
 dependencies = [
  "async-stream",
  "async-trait",
