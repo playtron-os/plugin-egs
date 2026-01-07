@@ -2,19 +2,8 @@ use lazy_static::lazy_static;
 use std::collections::HashMap;
 
 pub const SUPPORTED_LANGUAGES: &[&str] = &[
-    "pt-BR",
-    "fr-FR",
-    "de-DE",
-    "it-IT",
-    "pl-PL",
-    "ru-RU",
-    "es-ES",
-    "es-MX",
-    "zh-CN",
-    "zh-TW",
-    "ja-JP",
-    "ko-KR",
-    "cs-CZ",
+    "pt-BR", "fr-FR", "de-DE", "it-IT", "pl-PL", "ru-RU", "es-ES", "es-MX", "zh-CN", "zh-TW",
+    "ja-JP", "ko-KR", "cs-CZ",
 ];
 
 lazy_static! {
