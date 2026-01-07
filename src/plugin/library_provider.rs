@@ -311,24 +311,23 @@ impl LibraryProvider {
             .await
         {
             Ok(install_folder) => {
-                LibraryProviderSignals::move_item_completed(
-                    &emitter.clone(),
-                    app_id.clone(),
-                    install_folder,
-                )
-                .await?;
+                emitter
+                    .move_item_completed(app_id.clone(), install_folder)
+                    .await?;
                 Ok(())
             }
             Err(e) => {
-                LibraryProviderSignals::move_item_failed(
-                    &emitter.clone(),
-                    app_id.clone(),
-                    e.to_string(),
-                )
-                .await?;
+                emitter
+                    .move_item_failed(app_id.clone(), e.to_string())
+                    .await?;
                 Err(fdo::Error::Failed(e.to_string()))
             }
         }
+    }
+
+    /// Cancels move of an app
+    async fn cancel_move_item(&self, app_id: &str) {
+        self.service.cancel_move(app_id).await;
     }
 
     /// Uninstalls the given app.

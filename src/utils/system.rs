@@ -1,4 +1,4 @@
-use crate::types::results::U8Result;
+use crate::{plugin::errors::PluginError, types::results::U8Result};
 use async_stream::try_stream;
 use futures::Stream;
 use log::{info, trace};
@@ -9,6 +9,7 @@ use tokio::{
     io::AsyncReadExt,
     process::Command,
 };
+use tokio_util::sync::CancellationToken;
 
 /// Verifies if a program is in the PATH
 pub async fn is_program_in_path(program: &str) -> bool {
@@ -32,6 +33,7 @@ pub async fn is_program_in_path(program: &str) -> bool {
 pub async fn move_folder_with_progress(
     from: &str,
     to: &str,
+    cancellation: CancellationToken,
 ) -> Pin<Box<impl Stream<Item = U8Result>>> {
     info!("Moving folder from: {} to: {}", from, to);
 
@@ -86,16 +88,27 @@ pub async fn move_folder_with_progress(
             line.push(buffer[0]);
         }
 
-        let output = command.wait_with_output().await?;
+       let res = tokio::select! {
+            Ok(status) = command.wait() => {
+                if !status.success() {
+                    log::error!("Error moving app status:{}", status);
+                    Err(tokio::io::Error::other("bad status code"))
+                }
+                else {
+                    fs::remove_dir_all(&from).await
+                }
+            },
+            _ = cancellation.cancelled() => {
+                Err(tokio::io::Error::new(std::io::ErrorKind::Interrupted, "interrupted"))
+            }
+        };
 
-        if !output.status.success() {
-            let stdout = std::str::from_utf8(&output.stdout)?;
-            let err = std::str::from_utf8(&output.stderr)?;
-            log::error!("Error moving app {}, status:{}, stdout:{}", err, output.status, stdout);
-            // TODO: call on_move_failed
+        if let Err(err) = res {
+            if matches!(err.kind(), std::io::ErrorKind::Interrupted) {
+                command.kill().await?;
+                Err(PluginError::MoveItemCancelled)?
+            }
         }
-
-        fs::remove_dir_all(&from).await?;
     };
 
     Box::pin(stream)

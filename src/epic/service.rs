@@ -372,8 +372,14 @@ impl EpicService {
             Ok(None) => return Err("Game not installed".into()),
             Err(e) => return Err(format!("Get game info failed: {}", e).into()),
         };
-        if MOVE_CANCELLATION_TOKEN.lock().is_some() {
-            return Err("An app move operation is already in progress".into());
+
+        let cancellation = CancellationToken::new();
+        {
+            let mut lock = MOVE_CANCELLATION_TOKEN.lock();
+            if lock.is_some() {
+                return Err("An app move operation is already in progress".into());
+            }
+            *lock = Some(cancellation.clone())
         }
 
         let from_path = game_info.install_path;
@@ -384,32 +390,40 @@ impl EpicService {
 
         // use util to move game folder since legendary move doesn't support moving to a different drive
         fs::remove_dir_all(&dest_path).await.unwrap_or_default();
-        let mut progress = move_folder_with_progress(&from_path, dest_path).await;
+        let mut progress = move_folder_with_progress(&from_path, dest_path, cancellation).await;
         while let Some(progress) = progress.next().await {
             match progress {
                 Ok(progress) => {
-                    LibraryProviderSignals::move_item_progressed(
-                        &emitter.clone(),
-                        app_id.clone(),
-                        progress.into(),
-                    )
-                    .await?;
+                    emitter
+                        .move_item_progressed(app_id.clone(), progress.into())
+                        .await
+                        .ok();
                 }
                 Err(e) => {
-                    LibraryProviderSignals::move_item_failed(
-                        &emitter.clone(),
-                        app_id.clone(),
-                        e.to_string(),
-                    )
-                    .await?;
+                    emitter
+                        .move_item_failed(app_id.clone(), e.to_string())
+                        .await
+                        .ok();
+                    *MOVE_CANCELLATION_TOKEN.lock() = None;
                     return Err(e);
                 }
             }
         }
+
+        *MOVE_CANCELLATION_TOKEN.lock() = None;
+
         self.legendary
-            .move_app_to_drive(app_id.as_str(), dest_path)
+            .move_app_to_drive(app_id.as_str(), &base_path)
             .await?;
+
         Ok(dest_path.to_string())
+    }
+
+    pub async fn cancel_move(&self, _app_id: &str) {
+        let lock = MOVE_CANCELLATION_TOKEN.lock();
+        if let Some(token) = lock.as_ref() {
+            token.cancel()
+        }
     }
 
     pub async fn cloud_save_download(
