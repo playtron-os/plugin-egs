@@ -13,9 +13,15 @@ use crate::plugin::dbus::{build_connection, register_plugin};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    env::set_var("RUST_LOG", "debug");
     // Configure logging to output to stdout
+    #[cfg(not(debug_assertions))]
+    let level = log::LevelFilter::Info;
+    #[cfg(debug_assertions)]
+    let level = log::LevelFilter::Debug;
+
     env_logger::builder()
+        .filter_level(level)
+        .parse_env("PLAYTRON_LOG_LEVEL")
         .target(env_logger::Target::Stdout)
         .init();
 
