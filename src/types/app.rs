@@ -144,7 +144,6 @@ pub struct AppEulaInformation {
     pub body: String,
     pub country: String,
     pub language: String,
-    pub owned_app_id: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone, Default)]
