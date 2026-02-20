@@ -258,27 +258,39 @@ pub struct LegendaryGameInstall {
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct LegendaryGameInfo {
     pub game: LegendaryGame,
-    pub manifest: LegendaryGameManifest,
+    // This can be None in case we run while offline and dont have the game installed
+    pub manifest: Option<LegendaryGameManifest>,
+    // This is none if game is not installed
     pub install: Option<LegendaryGameInstall>,
 }
 
 impl LegendaryGameInfo {
     pub fn get_disk_size(&self) -> u64 {
         self.manifest
-            .tag_disk_size
-            .iter()
-            .find(|x| x.tag.is_empty())
-            .map(|x| x.size)
-            .unwrap_or(self.manifest.disk_size)
+            .as_ref()
+            .map(|manifest| {
+                manifest
+                    .tag_disk_size
+                    .iter()
+                    .find(|x| x.tag.is_empty())
+                    .map(|x| x.size)
+                    .unwrap_or(manifest.disk_size)
+            })
+            .unwrap_or_default()
     }
 
     pub fn get_download_size(&self) -> u64 {
         self.manifest
-            .tag_download_size
-            .iter()
-            .find(|x| x.tag.is_empty())
-            .map(|x| x.size)
-            .unwrap_or(self.manifest.download_size)
+            .as_ref()
+            .map(|manifest| {
+                manifest
+                    .tag_download_size
+                    .iter()
+                    .find(|x| x.tag.is_empty())
+                    .map(|x| x.size)
+                    .unwrap_or(manifest.download_size)
+            })
+            .unwrap_or_default()
     }
 
     pub fn get_language_from_tag(&self, tag: &str) -> String {
@@ -300,15 +312,24 @@ impl LegendaryGameInfo {
 
     pub fn get_languages(&self) -> Vec<String> {
         self.manifest
-            .install_tags
-            .iter()
-            .map(|tag| self.get_language_from_tag(tag))
-            .filter(|x| !x.is_empty())
-            .collect()
+            .as_ref()
+            .map(|manifest| {
+                manifest
+                    .install_tags
+                    .iter()
+                    .map(|tag| self.get_language_from_tag(tag))
+                    .filter(|x| !x.is_empty())
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     pub fn get_install_tags_for_language(&self, language: String) -> Vec<String> {
-        let install_tags = self.manifest.install_tags.clone();
+        let install_tags = self
+            .manifest
+            .as_ref()
+            .map(|manifest| manifest.install_tags.clone())
+            .unwrap_or_default();
         if language.is_empty() || install_tags.is_empty() {
             return [].to_vec();
         }
