@@ -332,7 +332,9 @@ impl Legendary {
         app_id: &str,
     ) -> ResultWithError<Option<LegendaryGameManifestPrerequisites>> {
         let game_info = self.info(app_id, true).await?;
-        Ok(game_info.manifest.prerequisites)
+        Ok(game_info
+            .manifest
+            .and_then(|manifest| manifest.prerequisites))
     }
 
     /// Download a game
@@ -347,7 +349,8 @@ impl Legendary {
         let asset_infos = cached_meta
             .asset_infos
             .get(&Platform::Windows.to_string())
-            .unwrap();
+            .cloned()
+            .unwrap_or_default();
         let asset = asset_infos.iter().find(|asset_info| {
             let asset_namespace = cached_meta.namespaces.get(&asset_info.namespace);
             if let Some(branch) = &options.branch {
@@ -363,7 +366,7 @@ impl Legendary {
 
         let folder_name = cached_meta.get_install_folder();
 
-        let game_info: LegendaryGameInfo = self.info(&app_id, false).await.unwrap();
+        let game_info: LegendaryGameInfo = self.info(&app_id, false).await?;
         let mut arguments: Vec<String> = vec![
             "install".to_owned(),
             app_id.to_string(),
@@ -422,7 +425,7 @@ impl Legendary {
         let total_download_size = game_info.get_download_size();
         let language = options.language.unwrap_or("en-US".into());
         tokio::spawn(async move {
-            LibraryProviderSignals::install_started(
+            let _ = LibraryProviderSignals::install_started(
                 &emitter,
                 app_id.clone(),
                 version,
@@ -432,24 +435,22 @@ impl Legendary {
                 "windows".to_owned(),
                 language,
             )
-            .await
-            .unwrap();
+            .await;
             let rx = stream_process_output(stdout, stderr);
 
             if let Err(err) = handle_download(&game_info, rx, emitter.clone()).await {
                 log::error!("Download failed: {}", err);
-                LibraryProviderSignals::install_failed(
+                let _ = LibraryProviderSignals::install_failed(
                     &emitter,
                     &app_id,
                     "Unexpected server response",
                 )
-                .await
-                .unwrap();
+                .await;
+
                 return Err(PluginError::DownloadFailed);
             }
-            LibraryProviderSignals::install_completed(&emitter.clone(), app_id.clone())
-                .await
-                .unwrap();
+            let _ =
+                LibraryProviderSignals::install_completed(&emitter.clone(), app_id.clone()).await;
             Ok(())
         });
 
