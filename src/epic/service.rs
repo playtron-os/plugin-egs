@@ -483,12 +483,15 @@ impl EpicService {
             Ok(game_info) => game_info,
             Err(e) => return Err(fdo::Error::Failed(e.to_string())),
         };
-        let mut path = "".to_string();
-        if platform == "mac" && game_info.game.cloud_save_folder_mac.is_some() {
-            path = game_info.game.cloud_save_folder_mac.unwrap();
-        } else if game_info.game.cloud_save_folder.is_some() {
-            path = game_info.game.cloud_save_folder.unwrap();
+        let path = if platform == "mac" {
+            game_info
+                .game
+                .cloud_save_folder_mac
+                .or(game_info.game.cloud_save_folder)
+        } else {
+            game_info.game.cloud_save_folder
         }
+        .unwrap_or_default();
         let mut paths = Vec::new();
         let user_id = self.user_data.lock().user_id.clone();
         if !path.is_empty() {
@@ -516,7 +519,10 @@ impl EpicService {
 
         let game_info = self.legendary.info(app_id, using_offline_mode).await?;
 
-        let install_path = game_info.install.unwrap().install_path;
+        let install_path = game_info
+            .install
+            .ok_or(format!("Install info not found for {}", app_id))?
+            .install_path;
         let prefix_path = PathBuf::from(install_path)
             .parent()
             .and_then(|p| p.parent())
@@ -526,7 +532,7 @@ impl EpicService {
             overlay::enable_for_prefix(&self.config.clone(), &prefix_path).await?;
         }
 
-        let game_meta: LegendaryGameListInfo = read_metadata_from_cache(app_id).await.unwrap();
+        let game_meta: LegendaryGameListInfo = read_metadata_from_cache(app_id).await?;
         if game_meta
             .get_partner_link_type()
             .is_some_and(|link| link == "ubisoft")

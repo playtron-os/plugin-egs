@@ -1,4 +1,3 @@
-use std::env;
 use std::future::pending;
 mod auth;
 mod constants;
