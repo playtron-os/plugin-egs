@@ -375,7 +375,7 @@ pub struct LegendaryInstalledGameResponse {
     pub manifest_path: Option<String>,
     pub needs_verification: bool,
     pub platform: String,
-    pub prereq_info: Option<String>,
+    pub prereq_info: Option<HashMap<String, String>>,
     pub requires_ot: bool,
     pub save_path: Option<String>,
     pub title: String,

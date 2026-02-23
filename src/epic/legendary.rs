@@ -8,7 +8,6 @@ use super::{
     },
 };
 use crate::{
-    constants::LIBRARY_PROVIDER_ID,
     epic::{
         common::{
             check_invalid_legendary_response, execute_legendary_handle_auth_json, parse_size,
@@ -601,7 +600,6 @@ impl Legendary {
                 body: e.body,
                 country: "".to_string(),
                 language: e.locale,
-                owned_app_id: format!("{}_{}", LIBRARY_PROVIDER_ID, app_id),
             })
             .collect();
 
