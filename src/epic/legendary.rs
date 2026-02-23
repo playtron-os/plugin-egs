@@ -41,9 +41,9 @@ use chrono::NaiveDateTime;
 use log::info;
 use parking_lot::Mutex;
 use regex::Regex;
-use std::time::Duration;
 use std::{collections::HashMap, sync::Arc};
 use std::{path::Path, process::Stdio};
+use std::{path::PathBuf, time::Duration};
 use tokio::{process::Command, sync::mpsc::Receiver, time::Instant};
 use tokio_util::sync::CancellationToken;
 use zbus::{object_server::SignalEmitter, DBusError};
@@ -285,10 +285,15 @@ impl Legendary {
             .cloned()
             .collect();
 
+        let game_executable = PathBuf::from(launch_params.game_directory)
+            .join(launch_params.game_executable)
+            .to_string_lossy()
+            .to_string();
+
         let arguments = shlex::try_join(options_iter.iter().map(|s| s.as_str()))?;
         launch_options.push(LaunchOption {
             description: "Launch".to_string(),
-            executable: launch_params.game_executable.clone(),
+            executable: game_executable.clone(),
             arguments: arguments.clone(),
             working_directory: launch_params.working_directory.clone(),
             environment: [].to_vec(),
@@ -313,7 +318,7 @@ impl Legendary {
 
                 launch_options.push(LaunchOption {
                     description: launch_option.name.clone(),
-                    executable: launch_params.game_executable.clone(),
+                    executable: game_executable.clone(),
                     arguments: launch_option_arguments,
                     working_directory: "".to_string(),
                     environment: [].to_vec(),
