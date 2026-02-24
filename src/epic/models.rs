@@ -379,7 +379,7 @@ pub struct LegendaryInstalledGameResponse {
     pub requires_ot: bool,
     pub save_path: Option<String>,
     pub title: String,
-    pub uninstaller: Option<HashMap<String, String>>,
+    pub uninstaller: Option<serde_json::Value>,
     pub version: String,
     pub namespace: Option<String>,
 }
