@@ -9,14 +9,12 @@ use crate::{
     // tools::common::get_tools_dir,
     utils::strings::StringUtils,
 };
-use nix::unistd::dup;
 use parking_lot::Mutex;
 use regex::Regex;
 use serde::de::DeserializeOwned;
 use std::{
     // fs::Permissions,,
     ffi::OsStr,
-    os::fd::{FromRawFd, RawFd},
     pin::Pin,
     process::Stdio,
     sync::Arc,
@@ -37,75 +35,10 @@ lazy_static! {
     static ref JSON_ARRAY_REGEX: Regex = Regex::new(r"(?s)\[.*\]").unwrap();
 }
 
-/// Get stdio from raw fd
-pub fn stdio_from_raw_fd_with_ownership(raw_fd: RawFd) -> ResultWithError<Stdio> {
-    match dup(raw_fd) {
-        Ok(duplicated_fd) => Ok(unsafe { Stdio::from_raw_fd(duplicated_fd) }),
-        Err(e) => {
-            log::error!("Error when converting raw file descriptor to stdio, err:{e:?}");
-            Err("Bad file descriptor".into())
-        }
-    }
-}
-
-/// Get cloned stdio from raw fd
-pub fn stdio_from_raw_fd(raw_fd: RawFd) -> ResultWithError<Stdio> {
-    match dup(raw_fd) {
-        Ok(duplicated_fd) => Ok(unsafe { Stdio::from_raw_fd(duplicated_fd) }),
-        Err(e) => {
-            log::error!("Error when converting raw file descriptor to stdio, err:{e:?}");
-            Err("Bad file descriptor".into())
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy)]
 pub enum Sig {
+    Int = 2,
     Kill = 9,
-    Term = 15,
-    Cont = 18,
-    Stop = 19,
-}
-
-/// Gets the child process ids of a process id
-pub fn get_children_pids(
-    pid: u32,
-    recursive: bool,
-) -> Pin<Box<dyn Future<Output = ResultWithError<Vec<u32>>> + Sync + Send>> {
-    Box::pin(async move {
-        if pid == 0 {
-            return Ok(vec![]);
-        }
-
-        let mut children_pids = vec![];
-        let mut command = Command::new("pgrep");
-        let command = command.arg("-P").arg(pid.to_string());
-
-        let output = command.output().await;
-        if let Err(err) = output {
-            log::error!("Error getting children pids, err:{}", err);
-            return Ok(vec![]);
-        }
-
-        let output = output?;
-        let stdout = std::str::from_utf8(&output.stdout)?;
-        let new_children_pids = stdout
-            .split('\n')
-            .map(|x| x.parse::<u32>().unwrap_or(0))
-            .filter(|x| *x != 0)
-            .collect::<Vec<u32>>();
-
-        children_pids.extend(new_children_pids);
-
-        if recursive {
-            for child_pid in children_pids.clone() {
-                let mut grandchildren_pids = get_children_pids(child_pid, true).await?;
-                children_pids.append(&mut grandchildren_pids);
-            }
-        }
-
-        Ok(children_pids)
-    })
 }
 
 /// Signals a child process by name using the OS `pkill` command
@@ -128,13 +61,6 @@ async fn terminate_inner(pid: &str, sig: Sig) {
     }
 }
 
-/// Terminates a child process by sending a kill signal to it
-pub fn sig_terminate(pid: String) -> Pin<Box<dyn Future<Output = ()> + Send + Sync>> {
-    Box::pin(async move {
-        terminate_inner(&pid, Sig::Term).await;
-    })
-}
-
 /// Terminates a child process forcefully
 pub fn sig_kill(pid: String) -> Pin<Box<dyn Future<Output = ()> + Send + Sync>> {
     Box::pin(async move {
@@ -142,15 +68,9 @@ pub fn sig_kill(pid: String) -> Pin<Box<dyn Future<Output = ()> + Send + Sync>> 
     })
 }
 
-pub fn sig_continue(pid: String) -> Pin<Box<dyn Future<Output = ()> + Send + Sync>> {
+pub fn sig_int(pid: String) -> Pin<Box<dyn Future<Output = ()> + Send + Sync>> {
     Box::pin(async move {
-        terminate_inner(&pid, Sig::Cont).await;
-    })
-}
-
-pub fn sig_stop(pid: String) -> Pin<Box<dyn Future<Output = ()> + Send + Sync>> {
-    Box::pin(async move {
-        terminate_inner(&pid, Sig::Stop).await;
+        terminate_inner(&pid, Sig::Int).await;
     })
 }
 
@@ -183,6 +103,9 @@ where
 {
     let output = Command::new(cmd)
         .args(args)
+        .stderr(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stdin(Stdio::piped())
         .env("LANG", "C")
         .output()
         .await?;
