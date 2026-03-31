@@ -31,8 +31,10 @@ use crate::{
         results::{EmptyResult, ResultWithError},
     },
     utils::{
-        child::{command_sync, stream_process_output, OutputLine},
-        reaper::ReaperProcess,
+        child::{
+            command, command_sync, deserialize_json, sig_int, sig_kill, stream_process_output,
+            OutputLine,
+        },
         strings::regex_capture,
         system::{bytes_to_megabytes, megabytes_to_bytes},
     },
@@ -44,7 +46,11 @@ use regex::Regex;
 use std::{collections::HashMap, sync::Arc};
 use std::{path::Path, process::Stdio};
 use std::{path::PathBuf, time::Duration};
-use tokio::{process::Command, sync::mpsc::Receiver, time::Instant};
+use tokio::{
+    process::{Child, Command},
+    sync::mpsc::Receiver,
+    time::Instant,
+};
 use tokio_util::sync::CancellationToken;
 use zbus::{object_server::SignalEmitter, DBusError};
 
@@ -73,7 +79,7 @@ lazy_static::lazy_static! {
 
 #[derive(Debug)]
 pub struct DownloadSession {
-    reaper: Option<ReaperProcess>,
+    process: Option<Child>,
 }
 
 lazy_static::lazy_static! {
@@ -81,7 +87,7 @@ lazy_static::lazy_static! {
     pub static ref FETCHING_APPS: Mutex<bool> = Mutex::new(false);
     static ref SAVE_DATES_REGEX: Regex = Regex::new(r"save date: (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})").unwrap();
     static ref MOVE_CANCELLATION_TOKEN: Mutex<Option<CancellationToken>> = Mutex::default();
-    static ref INSTALL_REAPER: Arc<tokio::sync::Mutex<DownloadSession>> = Arc::new(tokio::sync::Mutex::new(DownloadSession { reaper: None}));
+    static ref INSTALL_REAPER: Arc<tokio::sync::Mutex<DownloadSession>> = Arc::new(tokio::sync::Mutex::new(DownloadSession { process: None}));
 }
 
 #[derive(Clone)]
@@ -221,13 +227,11 @@ impl Legendary {
         if offline {
             args.push("--offline");
         }
-        let mut reaper = ReaperProcess::new(&self.config.legendary_command);
-        reaper.command.args(args);
-        let response = reaper
-            .execute_with_output_json(Some(check_invalid_legendary_response))
-            .await?;
+        let (stdout, stderr, _status) = command(&self.config.legendary_command, args).await?;
+        check_invalid_legendary_response(&stdout)?;
+        check_invalid_legendary_response(&stderr)?;
 
-        Ok(response)
+        deserialize_json(stdout)
     }
 
     /// Return the command line and arguments used to launch a game
@@ -236,7 +240,6 @@ impl Legendary {
         app_id: &str,
         params: HashMap<String, zbus::zvariant::Value<'_>>,
     ) -> ResultWithError<LegendaryLaunchParams> {
-        let mut reaper = ReaperProcess::new(&self.config.legendary_command);
         let mut args: Vec<&str> = Vec::from([
             "launch",
             app_id,
@@ -259,12 +262,12 @@ impl Legendary {
                 args.push("--offline");
             }
         }
-        reaper.command.args(args);
-        let response = reaper
-            .execute_with_output_json(Some(check_invalid_legendary_response))
-            .await?;
+        let (stdout, stderr, _status) = command(&self.config.legendary_command, args).await?;
 
-        Ok(response)
+        check_invalid_legendary_response(&stdout)?;
+        check_invalid_legendary_response(&stderr)?;
+
+        deserialize_json(stdout)
     }
 
     /// Return launch options for a game
@@ -409,18 +412,16 @@ impl Legendary {
         }
 
         // Execute legendary command
-        let mut reaper = ReaperProcess::new(&self.config.legendary_command);
-        reaper.with_identifier(app_id.to_string());
-        reaper
-            .command
+        let mut command = Command::new(&self.config.legendary_command);
+        command
             .args(arguments)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        reaper.execute().await?;
-        let stdout = reaper.stdout().await?;
-        let stderr = reaper.stderr().await?;
+        let mut child = command.spawn()?;
+        let stdout = child.stdout.take().unwrap();
+        let stderr = child.stderr.take().unwrap();
         let mut download_session = INSTALL_REAPER.lock().await;
-        download_session.reaper = Some(reaper);
+        download_session.process = Some(child);
 
         // Set child for session
         info!("Reaper initialized");
@@ -464,14 +465,22 @@ impl Legendary {
     pub async fn pause_download(&self) -> ResultWithError<i32> {
         log::info!("Pausing download");
         let mut download_session = INSTALL_REAPER.lock().await;
-        if let Some(reaper) = &download_session.reaper {
-            if let Err(err) = reaper.to_owned().terminate().await {
-                log::error!("Failed to stop reaper: {:?}", err);
+        if let Some(child) = &mut download_session.process {
+            if let Some(pid) = child.id().map(|id| id.to_string()) {
+                sig_int(pid.clone()).await;
+                if tokio::time::timeout(Duration::from_secs(5), child.wait())
+                    .await
+                    .is_err()
+                {
+                    log::error!("Failed to SIGINT install process, killing");
+                    sig_kill(pid).await;
+                    let _ = tokio::time::timeout(Duration::from_secs(5), child.wait()).await;
+                }
             }
         } else {
             log::error!("No install reaper found");
         };
-        download_session.reaper = None;
+        download_session.process = None;
         log::info!("Download paused");
         Ok(0)
     }
@@ -480,17 +489,20 @@ impl Legendary {
     pub async fn import(&self, app_id: &str, install_folder: &str) -> EmptyResult {
         info!("Legendary import game called for app:{}", app_id);
 
-        let mut reaper = ReaperProcess::new(&self.config.legendary_command);
-        reaper.command.args([
-            "import",
-            app_id,
-            install_folder,
-            "--with-dlcs",
-            "--disable-check",
-        ]);
-        let (status, _, stderr) = reaper
-            .execute_with_output(Some(check_invalid_legendary_response))
-            .await?;
+        let (stdout, stderr, status) = command(
+            &self.config.legendary_command,
+            [
+                "import",
+                app_id,
+                install_folder,
+                "--with-dlcs",
+                "--disable-check",
+            ],
+        )
+        .await?;
+
+        check_invalid_legendary_response(&stdout)?;
+        check_invalid_legendary_response(&stderr)?;
 
         if status != 0
             || (!stderr.contains("has been imported")
@@ -504,13 +516,15 @@ impl Legendary {
     }
 
     pub async fn get_installed_apps(&self) -> ResultWithError<Vec<LegendaryInstalledGameResponse>> {
-        let mut reaper = ReaperProcess::new(&self.config.legendary_command);
-        reaper
-            .command
-            .args(["list-installed", "--check-updates", "--json"]);
-        let (status, stdout, stderr) = reaper
-            .execute_with_output(Some(check_invalid_legendary_response))
-            .await?;
+        let (stdout, stderr, status) = command(
+            &self.config.legendary_command,
+            ["list-installed", "--check-updates", "--json"],
+        )
+        .await?;
+
+        check_invalid_legendary_response(&stdout)?;
+        check_invalid_legendary_response(&stderr)?;
+
         if status != 0 {
             log::error!(
                 "Error occurred when listing installed apps, status:{status}, stderr:{stderr:?}"

@@ -6,12 +6,12 @@ use crate::plugin::plugin_dependencies::PluginDependenciesSignals;
 use crate::types::app::DownloadStage;
 use crate::types::results::{EmptyResult, ResultWithError};
 use crate::utils::child::command;
-use crate::utils::reaper::ReaperProcess;
 use crate::utils::system::megabytes_to_bytes;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::{path::PathBuf, process::Stdio};
 
+use tokio::process::{Child, Command};
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
     process::ChildStderr,
@@ -23,7 +23,7 @@ pub const NAME: &str = "EOS Overlay";
 
 lazy_static::lazy_static! {
     /// Whether owned apps are being fetched
-    static ref OVERLAY_REAPER: Arc<tokio::sync::Mutex<Vec<ReaperProcess>>> = Arc::new(tokio::sync::Mutex::new(Vec::new()));
+    static ref OVERLAY_REAPER: Arc<tokio::sync::Mutex<Vec<Child>>> = Arc::new(tokio::sync::Mutex::new(Vec::new()));
 }
 
 // Remove EOS overlay
@@ -60,12 +60,11 @@ pub async fn install(
         overlay_folder,
     ];
     // Execute legendary command
-    let mut reaper = ReaperProcess::new(&config.legendary_command);
-    reaper.with_identifier("eos-overlay".into());
-    reaper.command.args(arguments).stderr(Stdio::piped());
-    reaper.execute().await?;
-    let stderr = reaper.stderr().await?;
-    OVERLAY_REAPER.lock().await.push(reaper);
+    let mut command = Command::new(&config.legendary_command);
+    command.args(arguments).stderr(Stdio::piped());
+    let mut child = command.spawn()?;
+    let stderr = child.stderr.take().unwrap();
+    OVERLAY_REAPER.lock().await.push(child);
     // Get stream
     let out = BufReader::new(stderr);
     let emitter = emitter.into_owned();
