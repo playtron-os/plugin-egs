@@ -529,7 +529,8 @@ impl EpicService {
             .and_then(|p| p.parent())
             .map(|p| p.join("wine_prefixes").join("epicgames").join(app_id));
         if let Some(prefix_path) = prefix_path {
-            overlay::enable_for_prefix(&self.config.clone(), &prefix_path).await?;
+            overlay::set_for_prefix(&self.config.clone(), &prefix_path, overlay::ENABLED_FOR_GAMES)
+                .await?;
         }
 
         let game_meta: LegendaryGameListInfo = read_metadata_from_cache(app_id).await?;

@@ -213,13 +213,19 @@ async fn handle_download(out: BufReader<ChildStderr>, emitter: SignalEmitter<'_>
     Ok(())
 }
 
-/// Enables the EOS Overlay for a certain app prefix
-pub async fn enable_for_prefix(config: &LegendaryConfig, prefix: &PathBuf) -> EmptyResult {
+/// Whether games get the EOS Overlay. Not on arm64: the overlay is an x86-64 Chromium that has to be
+/// emulated there, and its renderers took more CPU than the game itself.
+pub const ENABLED_FOR_GAMES: bool = !cfg!(target_arch = "aarch64");
+
+/// Enables or disables the EOS Overlay for a certain app prefix. Disabling is explicit because a
+/// prefix keeps the overlay registered from any earlier launch.
+pub async fn set_for_prefix(config: &LegendaryConfig, prefix: &PathBuf, enabled: bool) -> EmptyResult {
+    let verb = if enabled { "enable" } else { "disable" };
     let (_, output, status) = command(
         &config.legendary_command,
         [
             "eos-overlay",
-            "enable",
+            verb,
             "--prefix",
             prefix.join("pfx").to_string_lossy().as_ref(),
         ],
@@ -227,9 +233,9 @@ pub async fn enable_for_prefix(config: &LegendaryConfig, prefix: &PathBuf) -> Em
     .await?;
 
     if status != 0 {
-        log::error!("Error enabling EOS Overlay for prefix:{prefix:?} with status:{status} and output:{output}");
+        log::error!("Error running EOS Overlay {verb} for prefix:{prefix:?} with status:{status} and output:{output}");
     } else {
-        log::info!("Enabled EOS Overlay for prefix:{prefix:?}");
+        log::info!("EOS Overlay {verb} done for prefix:{prefix:?}");
     }
 
     Ok(())
