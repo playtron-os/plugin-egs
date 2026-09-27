@@ -11,7 +11,8 @@ use crate::{
     epic::{
         common::{
             check_invalid_legendary_response, execute_legendary_handle_auth_json, parse_size,
-            read_metadata_from_cache, require_legendary, EPIC_MAX_WRITER_QUEUE_EMPTY_ERROR_COUNT,
+            read_local_game_info, read_metadata_from_cache, require_legendary,
+            EPIC_MAX_WRITER_QUEUE_EMPTY_ERROR_COUNT,
         },
         constants::LANG_CONFIG_VALUES,
         models::{
@@ -277,7 +278,11 @@ impl Legendary {
         params: HashMap<String, zbus::zvariant::Value<'_>>,
     ) -> ResultWithError<Vec<LaunchOption>> {
         let launch_params = self.get_launch_parameters(&app_id, params).await?;
-        let game_info = self.info(&app_id, true).await?;
+        // The extra launch options are in legendary's metadata cache, read without starting it.
+        let extra_options = match read_local_game_info(&app_id).await {
+            Ok(info) => info.launch_options,
+            Err(_) => self.info(&app_id, true).await?.game.launch_options,
+        };
         let mut launch_options: Vec<LaunchOption> = Vec::new();
 
         let options_iter: Vec<String> = launch_params
@@ -304,9 +309,7 @@ impl Legendary {
             hardware_tags: [].to_vec(),
         });
 
-        let _: Vec<_> = game_info
-            .game
-            .launch_options
+        let _: Vec<_> = extra_options
             .iter()
             .map(|launch_option| {
                 let options = shlex::split(&launch_option.parameters).unwrap_or_default();
@@ -832,7 +835,7 @@ async fn handle_download(
                     &emitter,
                     app_id.clone(),
                     DownloadStage::Downloading,
-                    written_size as u64,
+                    written_size,
                     total_size as u64,
                     current_progress.into(),
                 )

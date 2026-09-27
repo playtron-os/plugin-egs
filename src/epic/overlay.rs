@@ -9,7 +9,10 @@ use crate::utils::child::command;
 use crate::utils::system::megabytes_to_bytes;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use std::{path::PathBuf, process::Stdio};
+use std::{
+    path::{Path, PathBuf},
+    process::Stdio,
+};
 
 use tokio::process::{Child, Command};
 use tokio::{
@@ -219,7 +222,17 @@ pub const ENABLED_FOR_GAMES: bool = !cfg!(target_arch = "aarch64");
 
 /// Enables or disables the EOS Overlay for a certain app prefix. Disabling is explicit because a
 /// prefix keeps the overlay registered from any earlier launch.
-pub async fn set_for_prefix(config: &LegendaryConfig, prefix: &PathBuf, enabled: bool) -> EmptyResult {
+pub async fn set_for_prefix(
+    config: &LegendaryConfig,
+    prefix: &PathBuf,
+    enabled: bool,
+) -> EmptyResult {
+    // Disabling only removes this registry value, and legendary takes seconds on every launch.
+    if !enabled && !overlay_path_set(prefix).await {
+        log::debug!("EOS Overlay already disabled for prefix:{prefix:?}");
+        return Ok(());
+    }
+
     let verb = if enabled { "enable" } else { "disable" };
     let (_, output, status) = command(
         &config.legendary_command,
@@ -239,6 +252,15 @@ pub async fn set_for_prefix(config: &LegendaryConfig, prefix: &PathBuf, enabled:
     }
 
     Ok(())
+}
+
+/// Whether the prefix points Epic games at the overlay (`OverlayPath` in HKCU, as legendary
+/// writes it). An unreadable registry counts as set, so legendary still gets to decide.
+async fn overlay_path_set(prefix: &Path) -> bool {
+    tokio::fs::read_to_string(prefix.join("pfx").join("user.reg"))
+        .await
+        .map(|reg| reg.lines().any(|line| line.starts_with("\"OverlayPath\"=")))
+        .unwrap_or(true)
 }
 
 fn parse_float(prefix: &str, suffix: Option<&str>, line: &str) -> ResultWithError<f32> {
