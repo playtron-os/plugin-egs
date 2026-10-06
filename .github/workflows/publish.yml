@@ -29,3 +29,28 @@ jobs:
         AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         BUCKET_URL: ${{ secrets.BUCKET_URL }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    # As the other repositories publish: each rpm the release built, on its own,
+    # where Kora and the image read them.
+    - name: Upload to the package repositories
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        AWS_DEFAULT_REGION: us-west-2
+        PACKAGES_UPLOAD_TOKEN: ${{ secrets.PACKAGES_UPLOAD_TOKEN }}
+      run: |
+        shopt -s nullglob
+        rpms=(dist/plugin-egs-*-1.*.rpm)
+        if [ ${#rpms[@]} -eq 0 ]; then
+          echo "No release was created"
+          exit 0
+        fi
+        for rpm in "${rpms[@]}"; do
+          name=$(basename "$rpm")
+          arch=${name%.rpm}
+          arch=${arch##*.}
+          aws s3 cp "$rpm" "s3://playtron-dev2-global-os-public/repos/playtron-app/$arch/$name"
+          if [ -n "$PACKAGES_UPLOAD_TOKEN" ]; then
+            curl --fail-with-body -H "Authorization: Bearer $PACKAGES_UPLOAD_TOKEN" -T "$rpm" \
+              "https://packages.playtron.one/rpm/playtron/packages/$name"
+          fi
+        done
