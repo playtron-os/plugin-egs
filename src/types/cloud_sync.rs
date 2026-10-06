@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use zbus::zvariant::Type;
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Type)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Type, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum CloudSyncOperation {
     Download,
@@ -25,6 +25,7 @@ pub struct CloudSyncFailed {
     pub remote: u64,
     pub usage: u64,
     pub quota: u64,
+    pub sync_state: CloudSyncOperation,
 }
 
 #[derive(Serialize, Deserialize, Debug, Type, Clone)]

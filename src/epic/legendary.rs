@@ -28,7 +28,7 @@ use crate::{
         app::{
             AppEulaInformation, DownloadStage, InstallOption, LaunchOption, LaunchType, Platform,
         },
-        cloud_sync::{CloudPath, CloudSyncFailed, CloudSyncOperation},
+        cloud_sync::{CloudPath, CloudSyncFailed, CloudSyncOperation, CloudSyncProgress},
         results::{EmptyResult, ResultWithError},
     },
     utils::{
@@ -76,6 +76,32 @@ lazy_static::lazy_static! {
     // No internet during download error match regex
     pub static ref NO_INTERNET_ERROR_REGEX: Regex =
         Regex::new(r"Max retries exceeded with url").unwrap();
+}
+
+fn sync_failure(
+    app_id: &str,
+    operation: &CloudSyncOperation,
+    conflict: bool,
+    local: u64,
+    remote: u64,
+) -> CloudSyncFailed {
+    let error = if conflict {
+        PluginError::CloudConflict
+    } else {
+        match operation {
+            CloudSyncOperation::Upload => PluginError::CloudFileUpload,
+            CloudSyncOperation::Download => PluginError::CloudFileDownload,
+        }
+    };
+    CloudSyncFailed {
+        app_id: app_id.to_owned(),
+        error: error.name().to_string(),
+        local,
+        remote,
+        usage: 0,
+        quota: 0,
+        sync_state: operation.clone(),
+    }
 }
 
 #[derive(Debug)]
@@ -171,53 +197,57 @@ impl Legendary {
             (CloudSyncOperation::Upload, true) => command = command.arg("--force-upload"),
         }
 
-        let output = command.output().await?;
-        let output = String::from_utf8_lossy(&output.stderr);
-
-        log::debug!("Cloud sync legendary output: {output}");
-
-        if operation == CloudSyncOperation::Download {
-            tokio::spawn(command_sync());
-        }
-
-        if operation == CloudSyncOperation::Upload
-            && output.contains("Save game downloading is disabled, skipping")
-        {
-            log::error!("Conflict detected when uploading epic game cloud save for provider_app_id:{app_id}");
-        } else if operation == CloudSyncOperation::Download
-            && output.contains("Save game uploading is disabled, skipping")
-        {
-            log::error!("Conflict detected when downloading epic game cloud save for provider_app_id:{app_id}");
-        }
-
-        if output.contains("is in conflict") {
-            let mut captures = SAVE_DATES_REGEX.captures_iter(&output);
-            let cloud = captures.next();
-            let local = captures.next();
-
-            log::debug!("Cloud: {:?} Local: {:?}", cloud, local);
-
-            match (cloud, local) {
-                (Some(cloud), Some(local)) => {
-                    let format = "%Y-%m-%d %H:%M:%S";
-                    let cloud_date = NaiveDateTime::parse_from_str(&cloud[1], format)?.and_utc();
-                    let local_date = NaiveDateTime::parse_from_str(&local[1], format)?.and_utc();
-                    emitter
-                        .cloud_save_sync_failed(CloudSyncFailed {
-                            app_id: app_id.to_string(),
-                            error: PluginError::CloudConflict.name().to_string(),
-                            local: local_date.timestamp().try_into().unwrap_or_default(),
-                            remote: cloud_date.timestamp().try_into().unwrap_or_default(),
-                            usage: 0,
-                            quota: 0,
-                        })
-                        .await
-                        .ok();
-                }
-                _ => log::error!("Unable to find cloud and local timestamps in legendary output"),
+        let output = match command.output().await {
+            Ok(output) => output,
+            Err(err) => {
+                emitter
+                    .cloud_save_sync_failed(sync_failure(app_id, &operation, false, 0, 0))
+                    .await
+                    .ok();
+                return Err(err.into());
             }
+        };
+        let text = format!(
+            "{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        log::debug!("Cloud sync legendary output: {text}");
+        let conflict = text.contains("is in conflict")
+            || (operation == CloudSyncOperation::Upload
+                && text.contains("Save game downloading is disabled, skipping"))
+            || (operation == CloudSyncOperation::Download
+                && text.contains("Save game uploading is disabled, skipping"));
+        let logged_error = text
+            .lines()
+            .any(|line| line.starts_with("ERROR:") || line.contains("] ERROR:"));
+        if conflict || logged_error || !output.status.success() {
+            let mut dates = SAVE_DATES_REGEX.captures_iter(&text).filter_map(|capture| {
+                NaiveDateTime::parse_from_str(&capture[1], "%Y-%m-%d %H:%M:%S")
+                    .ok()
+                    .map(|date| date.and_utc().timestamp().max(0) as u64)
+            });
+            let remote = dates.next().unwrap_or(0);
+            let local = dates.next().unwrap_or(0);
+            let failure = sync_failure(app_id, &operation, conflict, local, remote);
+            let error = failure.error.clone();
+            emitter.cloud_save_sync_failed(failure).await.ok();
+            return Err(format!(
+                "{error}: Legendary sync-saves did not complete ({})",
+                output.status
+            )
+            .into());
         }
-
+        if operation == CloudSyncOperation::Download {
+            command_sync().await;
+        }
+        emitter
+            .cloud_save_sync_progressed(CloudSyncProgress {
+                app_id: app_id.to_owned(),
+                progress: 100.0,
+                sync_state: operation,
+            })
+            .await?;
         Ok(())
     }
 
@@ -879,4 +909,159 @@ async fn handle_download(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod cloud_completion_tests {
+    use super::*;
+    use futures::StreamExt;
+    use std::os::unix::fs::PermissionsExt;
+    use tokio::io::{AsyncBufReadExt, BufReader};
+
+    async fn run_fixture(stderr: &str, exit: u8, success: bool) {
+        run_fixture_for_operation(stderr, exit, success, CloudSyncOperation::Upload).await;
+    }
+
+    async fn run_fixture_for_operation(
+        stderr: &str,
+        exit: u8,
+        success: bool,
+        operation: CloudSyncOperation,
+    ) {
+        let directory = std::env::temp_dir().join(format!(
+            "egs-save-test-{}-{}",
+            std::process::id(),
+            rand::random::<u64>()
+        ));
+        std::fs::create_dir_all(&directory).unwrap();
+        std::fs::write(directory.join("bus.conf"),r#"<busconfig><type>session</type><listen>unix:tmpdir=/tmp</listen><policy context="default"><allow user="*"/><allow own="*"/><allow send_destination="*"/><allow receive_sender="*"/></policy></busconfig>"#).unwrap();
+        let mut bus = Command::new("dbus-daemon")
+            .args(["--nofork", "--print-address=1", "--nopidfile"])
+            .arg(format!(
+                "--config-file={}",
+                directory.join("bus.conf").display()
+            ))
+            .stdout(Stdio::piped())
+            .kill_on_drop(true)
+            .spawn()
+            .expect("dbus-daemon required for protocol test");
+        let address = BufReader::new(bus.stdout.take().unwrap())
+            .lines()
+            .next_line()
+            .await
+            .unwrap()
+            .unwrap();
+        let connection = zbus::connection::Builder::address(address.as_str())
+            .unwrap()
+            .build()
+            .await
+            .unwrap();
+        let observer = zbus::connection::Builder::address(address.as_str())
+            .unwrap()
+            .build()
+            .await
+            .unwrap();
+        let proxy = zbus::Proxy::new(
+            &observer,
+            connection.unique_name().unwrap().as_str(),
+            "/fixture",
+            "one.playtron.plugin.CloudSaveProvider",
+        )
+        .await
+        .unwrap();
+        let mut progress = proxy
+            .receive_signal("CloudSaveSyncProgressed")
+            .await
+            .unwrap();
+        let mut failures = proxy.receive_signal("CloudSaveSyncFailed").await.unwrap();
+        let emitter = SignalEmitter::new(&connection, "/fixture").unwrap();
+        let script = directory.join("legendary");
+        // Fixtures are fixed test data; write their output through a separate file.
+        std::fs::write(directory.join("stderr"), stderr).unwrap();
+        std::fs::write(
+            &script,
+            format!(
+                "#!/bin/sh\ncat '{}' >&2\nexit {exit}\n",
+                directory.join("stderr").display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let legendary = Legendary::new(Some(LegendaryConfig {
+            legendary_command: script.to_string_lossy().into_owned(),
+        }));
+        let result = legendary
+            .perform_cloud_sync(
+                &emitter,
+                "fixture-game",
+                operation.clone(),
+                &CloudPath {
+                    alias: String::new(),
+                    path: directory.to_string_lossy().into_owned(),
+                    pattern: "*".into(),
+                    recursive: true,
+                    platforms: vec![],
+                },
+                false,
+            )
+            .await;
+        if success {
+            result.unwrap();
+            let event = tokio::time::timeout(Duration::from_secs(1), progress.next())
+                .await
+                .unwrap()
+                .unwrap();
+            let (event,): (CloudSyncProgress,) = event.body().deserialize().unwrap();
+            assert_eq!(event.app_id, "fixture-game");
+            assert_eq!(event.progress, 100.0);
+            assert_eq!(event.sync_state, operation);
+            assert!(
+                tokio::time::timeout(Duration::from_millis(10), failures.next())
+                    .await
+                    .is_err()
+            );
+        } else {
+            assert!(result.is_err());
+            let event = tokio::time::timeout(Duration::from_secs(1), failures.next())
+                .await
+                .unwrap()
+                .unwrap();
+            let (event,): (CloudSyncFailed,) = event.body().deserialize().unwrap();
+            assert_eq!(event.app_id, "fixture-game");
+            assert_eq!(event.sync_state, operation);
+            assert!(
+                tokio::time::timeout(Duration::from_millis(10), progress.next())
+                    .await
+                    .is_err()
+            );
+        }
+        bus.kill().await.unwrap();
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[tokio::test]
+    async fn successful_command_emits_terminal_upload_signal() {
+        run_fixture("Nothing to upload", 0, true).await;
+    }
+    #[tokio::test]
+    async fn nonzero_exit_emits_failure_and_returns_error() {
+        run_fixture("network unavailable", 23, false).await;
+    }
+    #[tokio::test]
+    async fn zero_exit_conflict_is_failure_even_without_parseable_dates() {
+        run_fixture("Save game is in conflict", 0, false).await;
+    }
+    #[tokio::test]
+    async fn skipped_upload_is_not_misreported_as_success() {
+        run_fixture("Save game downloading is disabled, skipping", 0, false).await;
+    }
+    #[tokio::test]
+    async fn logged_error_with_zero_exit_does_not_emit_success() {
+        run_fixture("[cli] ERROR: Upload failed", 0, false).await;
+    }
+    #[tokio::test]
+    async fn explicit_download_emits_confirmed_download_completion() {
+        run_fixture_for_operation("Nothing to download", 0, true, CloudSyncOperation::Download)
+            .await;
+    }
 }
