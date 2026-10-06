@@ -28,7 +28,7 @@ use tokio_util::sync::CancellationToken;
 use zbus::fdo;
 use zbus::object_server::SignalEmitter;
 
-use super::common::read_metadata_from_cache;
+use super::common::{read_local_game_info, read_metadata_from_cache};
 
 lazy_static::lazy_static! {
     static ref MOVE_CANCELLATION_TOKEN: Mutex<Option<CancellationToken>> = Mutex::default();
@@ -479,17 +479,26 @@ impl EpicService {
         app_id: String,
         platform: String,
     ) -> fdo::Result<Vec<CloudPath>> {
-        let game_info = match self.legendary.info(&app_id, false).await {
-            Ok(game_info) => game_info,
-            Err(e) => return Err(fdo::Error::Failed(e.to_string())),
+        // The save folders are in the metadata legendary caches, which is read directly: asking
+        // legendary costs seconds before every launch. It is asked only when nothing is cached.
+        let (folder, folder_mac) = match read_local_game_info(&app_id).await {
+            Ok(info) => (info.cloud_save_folder, info.cloud_save_folder_mac),
+            Err(_) => {
+                let game_info = self
+                    .legendary
+                    .info(&app_id, false)
+                    .await
+                    .map_err(|e| fdo::Error::Failed(e.to_string()))?;
+                (
+                    game_info.game.cloud_save_folder,
+                    game_info.game.cloud_save_folder_mac,
+                )
+            }
         };
         let path = if platform == "mac" {
-            game_info
-                .game
-                .cloud_save_folder_mac
-                .or(game_info.game.cloud_save_folder)
+            folder_mac.or(folder)
         } else {
-            game_info.game.cloud_save_folder
+            folder
         }
         .unwrap_or_default();
         let mut paths = Vec::new();
@@ -517,19 +526,34 @@ impl EpicService {
             using_offline_mode
         );
 
-        let game_info = self.legendary.info(app_id, using_offline_mode).await?;
-
-        let install_path = game_info
-            .install
-            .ok_or(format!("Install info not found for {}", app_id))?
-            .install_path;
+        // Only the install path is needed, which is in legendary's installed.json.
+        let install_path = match read_local_game_info(app_id)
+            .await
+            .ok()
+            .and_then(|info| info.install_path)
+        {
+            Some(install_path) => install_path,
+            None => {
+                self.legendary
+                    .info(app_id, true)
+                    .await?
+                    .install
+                    .ok_or(format!("Install info not found for {}", app_id))?
+                    .install_path
+            }
+        };
         let prefix_path = PathBuf::from(install_path)
             .parent()
             .and_then(|p| p.parent())
             .and_then(|p| p.parent())
             .map(|p| p.join("wine_prefixes").join("epicgames").join(app_id));
         if let Some(prefix_path) = prefix_path {
-            overlay::enable_for_prefix(&self.config.clone(), &prefix_path).await?;
+            overlay::set_for_prefix(
+                &self.config.clone(),
+                &prefix_path,
+                overlay::ENABLED_FOR_GAMES,
+            )
+            .await?;
         }
 
         let game_meta: LegendaryGameListInfo = read_metadata_from_cache(app_id).await?;

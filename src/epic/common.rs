@@ -14,7 +14,7 @@ use crate::utils::{
     system::is_program_in_path,
 };
 
-use super::models::LegendaryGameListInfo;
+use super::models::{LegendaryGameLaunchOptions, LegendaryGameListInfo};
 
 pub const EPIC_MAX_WRITER_QUEUE_EMPTY_ERROR_COUNT: u16 = 3;
 
@@ -117,12 +117,62 @@ pub fn parse_size(line: &str, download_size_type: DownloadSizeType) -> ResultWit
     Ok(size.parse()?)
 }
 
-/// Read game metadata from Legendary's cache
-pub async fn read_metadata_from_cache(app_id: &str) -> ResultWithError<LegendaryGameListInfo> {
+fn legendary_config_dir() -> ResultWithError<PathBuf> {
     let config_home = std::env::var("XDG_CONFIG_HOME")
         .or_else(|_err| std::env::var("HOME").map(|var| format!("{var}/.config")))?;
-    let metadata_path: PathBuf =
-        format!("{config_home}/legendary/metadata/{app_id}.json").parse()?;
+    Ok(PathBuf::from(config_home).join("legendary"))
+}
+
+/// What a launch needs from `legendary info`, read from the files legendary keeps instead: its
+/// metadata cache and `installed.json`. Starting legendary costs about a second a call.
+pub struct LocalGameInfo {
+    /// `None` when the game is not installed
+    pub install_path: Option<String>,
+    pub cloud_save_folder: Option<String>,
+    pub cloud_save_folder_mac: Option<String>,
+    pub launch_options: Vec<LegendaryGameLaunchOptions>,
+}
+
+/// Fails when legendary has no metadata for the game, as `legendary info --offline` does.
+pub async fn read_local_game_info(app_id: &str) -> ResultWithError<LocalGameInfo> {
+    let dir = legendary_config_dir()?;
+    let metadata = tokio::fs::read_to_string(dir.join("metadata").join(format!("{app_id}.json")));
+    let metadata: serde_json::Value = serde_json::from_str(&metadata.await?)?;
+    let attributes = &metadata["metadata"]["customAttributes"];
+    let value = |key: &str| attributes[key]["value"].as_str().map(str::to_owned);
+
+    // The same derivation as legendary's: numbered extra options, sorted.
+    let mut launch_options = Vec::new();
+    for i in 1.. {
+        let name = value(&format!("extraLaunchOption_{i:03}_Name"));
+        let parameters = value(&format!("extraLaunchOption_{i:03}_Args"));
+        let (Some(name), Some(parameters)) = (name, parameters) else {
+            break;
+        };
+        launch_options.push(LegendaryGameLaunchOptions { name, parameters });
+    }
+    launch_options.sort_by(|a, b| (&a.name, &a.parameters).cmp(&(&b.name, &b.parameters)));
+
+    let installed = match tokio::fs::read_to_string(dir.join("installed.json")).await {
+        Ok(installed) => serde_json::from_str(&installed)?,
+        Err(_) => serde_json::Value::Null,
+    };
+
+    Ok(LocalGameInfo {
+        install_path: installed[app_id]["install_path"]
+            .as_str()
+            .map(str::to_owned),
+        cloud_save_folder: value("CloudSaveFolder"),
+        cloud_save_folder_mac: value("CloudSaveFolder_MAC"),
+        launch_options,
+    })
+}
+
+/// Read game metadata from Legendary's cache
+pub async fn read_metadata_from_cache(app_id: &str) -> ResultWithError<LegendaryGameListInfo> {
+    let metadata_path = legendary_config_dir()?
+        .join("metadata")
+        .join(format!("{app_id}.json"));
 
     if !metadata_path.exists() {
         return Err("App not found".into());
